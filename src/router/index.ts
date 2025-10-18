@@ -1,13 +1,104 @@
 import { createRouter, createWebHashHistory, RouteRecordRaw } from 'vue-router';
 import { usePermissStore } from '../store/permiss';
 import Home from '../views/home.vue';
+import home_student from '@/views/home_student.vue';
+import home_teacher from '@/views/home_teacher.vue';
 import NProgress from 'nprogress';
 import 'nprogress/nprogress.css';
 
 const routes: RouteRecordRaw[] = [
     {
         path: '/',
-        redirect: '/dashboard',
+        redirect: '/login',
+    },
+    {
+        path: '/home_student',
+        name: 'home_student',
+        component: home_student,
+        children:[
+          {
+                path: 'student_dashboard',
+                name: 'student_dashboard',
+                meta: {
+                    title: '学生首页',
+                },
+                component: () => import('../views/dashboard_student.vue')
+            },
+            {
+                path: 'ai_teacher',
+                name: 'ai_teacher',
+                meta: {
+                    title: 'ai助教',
+                },
+                component: () => import('../views/pages/ai_teacher.vue')
+            },
+            {
+                path:'knowledge_graph',
+                name:'knowledge_graph',
+                meta:{  
+                    title:'知识图谱',
+                },     
+                component:()=>import('../views/pages/knowledge_graph.vue')
+            },
+            {
+                path: 'course_detail',
+                name: 'course_detail',
+                meta: {
+                    title: '课程详情',
+                },
+                component: () => import('@/views/pages/course_detail.vue'),
+                children: [
+                    {
+                        path: 'notice',
+                        name: 'course_notice',
+                        meta: { title: '公告' },
+                        component: () => import('@/views/pages/course_pages/announcement.vue')
+                    },
+                    {
+                        path: 'material',
+                        name: 'course_material',
+                        meta: { title: '课件' },
+                        component: () => import('@/views/pages/course_material.vue')
+                    },
+                    {
+                        path: 'exam',
+                        name: 'course_exam',
+                        meta: { title: '测试' },
+                        component: () => import('@/views/pages/course_exam.vue')
+                    },
+                    {
+                        path: 'discuss',
+                        name: 'course_discuss',
+                        meta: { title: '讨论区' },
+                        component: () => import('@/views/pages/course_discuss.vue')
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        path: '/home_teacher',
+        name: 'home_teacher',
+        component: home_teacher,
+        children:[
+            {
+                path: 'teacher_dashboard',
+                name: 'teacher_dashboard',
+                meta: {
+                    title: '教师首页',
+                    //permiss: 'teacher'
+                },
+                component: () => import('../views/dashboard_teacher.vue')
+            },
+            {
+                path: 'upload',
+                name: 'upload',
+                meta: {
+                    title: '上传课件',
+                },
+                component: () => import('../views/element/upload.vue'),
+            }
+        ]
     },
     {
         path: '/',
@@ -19,7 +110,7 @@ const routes: RouteRecordRaw[] = [
                 name: 'dashboard',
                 meta: {
                     title: '系统首页',
-                    noAuth: true,
+                    noAuth: false
                 },
                 component: () => import(/* webpackChunkName: "dashboard" */ '../views/dashboard.vue'),
             },
@@ -203,15 +294,15 @@ const routes: RouteRecordRaw[] = [
                 },
                 component: () => import(/* webpackChunkName: "form" */ '../views/element/form.vue'),
             },
-            {
-                path: '/upload',
-                name: 'upload',
-                meta: {
-                    title: '上传',
-                    permiss: '22',
-                },
-                component: () => import(/* webpackChunkName: "upload" */ '../views/element/upload.vue'),
-            },
+            // {
+            //     path: '/upload',
+            //     name: 'upload',
+            //     meta: {
+            //         title: '上传',
+            //         permiss: '22',
+            //     },
+            //     component: () => import(/* webpackChunkName: "upload" */ '../views/element/upload.vue'),
+            // },
             {
                 path: '/statistic',
                 name: 'statistic',

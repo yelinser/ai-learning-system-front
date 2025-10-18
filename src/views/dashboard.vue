@@ -103,7 +103,7 @@
                         <p class="card-header-desc">销售商品的热门榜单Top5</p>
                     </div>
                     <div>
-                        <div class="rank-item" v-for="(rank, index) in ranks">
+                        <div class="rank-item" v-for="(rank, index) in ranks" :key="index">
                             <div class="rank-item-avatar">{{ index + 1 }}</div>
                             <div class="rank-item-content">
                                 <div class="rank-item-top">

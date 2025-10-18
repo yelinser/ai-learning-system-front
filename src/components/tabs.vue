@@ -40,6 +40,10 @@ const activePath = ref(route.fullPath);
 const tabs = useTabsStore();
 // 设置标签
 const setTags = (route: any) => {
+    // 判断是否为课程详情子页面，不添加标签
+    if (route.name === 'course_notice' || route.name === 'course_material' || route.name === 'course_exam' || route.name === 'course_discuss') {
+        return;
+    }
     const isExist = tabs.list.some((item) => {
         return item.path === route.fullPath;
     });

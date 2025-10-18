@@ -3,7 +3,7 @@
         <div class="login-container">
             <div class="login-header">
                 <img class="logo mr10" src="../../assets/img/logo.svg" alt="" />
-                <div class="login-title">后台管理系统</div>
+                <div class="login-title">智慧教学系统</div>
             </div>
             <el-form :model="param" :rules="rules" ref="login" size="large">
                 <el-form-item prop="username">
@@ -28,6 +28,16 @@
                             </el-icon>
                         </template>
                     </el-input>
+                </el-form-item>
+                <!-- 新增角色选择单选框 -->
+                <el-form-item prop="role">
+                    <template #label>
+                        <span style="color: #606266; font-size: 14px;">角色选择</span>
+                    </template>
+                    <el-radio-group v-model="param.role" class="role-radio-group">
+                        <el-radio label="teacher" size="large">教师</el-radio>
+                        <el-radio label="student" size="large">学生</el-radio>
+                    </el-radio-group>
                 </el-form-item>
                 <div class="pwd-tips">
                     <el-checkbox class="pwd-checkbox" v-model="checked" label="记住密码" />
@@ -54,6 +64,7 @@ import type { FormInstance, FormRules } from 'element-plus';
 interface LoginInfo {
     username: string;
     password: string;
+    role: string;
 }
 
 const lgStr = localStorage.getItem('login-param');
@@ -64,8 +75,10 @@ const router = useRouter();
 const param = reactive<LoginInfo>({
     username: defParam ? defParam.username : '',
     password: defParam ? defParam.password : '',
+    role: defParam?.role || 'student' // 默认角色为学生
 });
 
+// 新增角色验证规则
 const rules: FormRules = {
     username: [
         {
@@ -75,7 +88,15 @@ const rules: FormRules = {
         },
     ],
     password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
+    role: [
+        {
+            required: true,
+            message: '请选择角色',
+            trigger: 'change',
+        }
+    ]
 };
+
 const permiss = usePermissStore();
 const login = ref<FormInstance>();
 const submitForm = (formEl: FormInstance | undefined) => {
@@ -84,9 +105,21 @@ const submitForm = (formEl: FormInstance | undefined) => {
         if (valid) {
             ElMessage.success('登录成功');
             localStorage.setItem('vuems_name', param.username);
+            localStorage.setItem('vuems_role', param.role); // 存储角色信息
+            
             const keys = permiss.defaultList[param.username == 'admin' ? 'admin' : 'user'];
             permiss.handleSet(keys);
-            router.push('/');
+            if(param.username === 'admin') {
+                router.push('/dashboard'); // 管理员首页
+                return;
+            }
+            // 根据角色跳转不同页面
+            if (param.role === 'teacher') {
+                router.push('/home_teacher'); // 教师首页
+            } else {
+                router.push('/home_student'); // 学生首页
+            }
+
             if (checked.value) {
                 localStorage.setItem('login-param', JSON.stringify(param));
             } else {
@@ -167,5 +200,13 @@ tabs.clearTabs();
     margin-top: 20px;
     font-size: 14px;
     color: #787878;
+}
+
+/* 新增角色选择样式 */
+.role-radio-group {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    margin-top: 10px;
 }
 </style>
