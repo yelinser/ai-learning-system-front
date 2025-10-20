@@ -1,270 +1,436 @@
 <template>
-    <div>
-        <div class="user-container">
-            <el-card class="user-profile" shadow="hover" :body-style="{ padding: '0px' }">
-                <div class="user-profile-bg"></div>
-                <div class="user-avatar-wrap">
-                    <el-avatar class="user-avatar" :size="120" :src="avatarImg" />
-                </div>
-                <div class="user-info">
-                    <div class="info-name">{{ name }}</div>
-                    <div class="info-desc">
-                        <span>@lin-xin</span>
-                        <el-divider direction="vertical" />
-                        <el-link href="https://lin-xin.gitee.io" target="_blank">lin-xin.gitee.io</el-link>
-                    </div>
-                    <div class="info-desc">FE Developer</div>
-                    <div class="info-icon">
-                        <a href="https://github.com/lin-xin" target="_blank"> <i class="el-icon-lx-github-fill"></i></a>
-                        <i class="el-icon-lx-qq-fill"></i>
-                        <i class="el-icon-lx-facebook-fill"></i>
-                        <i class="el-icon-lx-twitter-fill"></i>
-                    </div>
-                </div>
-                <div class="user-footer">
-                    <div class="user-footer-item">
-                        <el-statistic title="Follower" :value="1800" />
-                    </div>
-                    <div class="user-footer-item">
-                        <el-statistic title="Following" :value="666" />
-                    </div>
-                    <div class="user-footer-item">
-                        <el-statistic title="Total Post" :value="888" />
-                    </div>
-                </div>
-            </el-card>
-            <el-card
-                class="user-content"
-                shadow="hover"
-                :body-style="{ padding: '20px 50px', height: '100%', boxSizing: 'border-box' }"
-            >
-                <el-tabs tab-position="left" v-model="activeName">
-                    <el-tab-pane name="label1" label="消息通知" class="user-tabpane">
-                        <TabsComp />
-                    </el-tab-pane>
-                    <el-tab-pane name="label2" label="我的头像" class="user-tabpane">
-                        <div class="crop-wrap" v-if="activeName === 'label2'">
-                            <vueCropper
-                                ref="cropper"
-                                :img="imgSrc"
-                                :autoCrop="true"
-                                :centerBox="true"
-                                :full="true"
-                                mode="contain"
-                            >
-                            </vueCropper>
-                        </div>
-                        <el-button class="crop-demo-btn" type="primary"
-                            >选择图片
-                            <input class="crop-input" type="file" name="image" accept="image/*" @change="setImage" />
-                        </el-button>
-                        <el-button type="success" @click="saveAvatar">上传并保存</el-button>
-                    </el-tab-pane>
-                    <el-tab-pane name="label3" label="修改密码" class="user-tabpane">
-                        <el-form class="w500" label-position="top">
-                            <el-form-item label="旧密码：">
-                                <el-input type="password" v-model="form.old"></el-input>
-                            </el-form-item>
-                            <el-form-item label="新密码：">
-                                <el-input type="password" v-model="form.new"></el-input>
-                            </el-form-item>
-                            <el-form-item label="确认新密码：">
-                                <el-input type="password" v-model="form.new1"></el-input>
-                            </el-form-item>
-                            <el-form-item>
-                                <el-button type="primary" @click="onSubmit">保存</el-button>
-                            </el-form-item>
-                        </el-form>
-                    </el-tab-pane>
-                    <el-tab-pane name="label4" label="赞赏作者" class="user-tabpane">
-                        <div class="plugins-tips">
-                            如果该框架
-                            <el-link href="https://github.com/lin-xin/vue-manage-system" target="_blank"
-                                >vue-manage-system</el-link
-                            >
-                            对你有帮助，那就请作者喝杯饮料吧！<el-icon>
-                                <ColdDrink />
-                            </el-icon>
-                            加微信号 linxin_20 探讨问题。
-                        </div>
-                        <div>
-                            <img src="https://lin-xin.gitee.io/images/weixin.jpg" />
-                        </div>
-                    </el-tab-pane>
-                </el-tabs>
-            </el-card>
+  <div class="user-management">
+    <div class="content">
+      <div class="sidebar">
+        <div 
+          v-for="(item, index) in menuItems" 
+          :key="index"
+          class="menu-item"
+          :class="{ active: activeTab === item.id }"
+          @click="activeTab = item.id"
+        >
+          <i :class="item.icon"></i>
+          <span>{{ item.title }}</span>
         </div>
+      </div>
+      
+      <div class="main-content">
+        <!-- 个人信息 -->
+        <div v-if="activeTab === 'profile'" class="profile-section">
+          <h2>个人信息维护</h2>
+          <div class="form-container">
+            <div class="form-group">
+              <label>姓名</label>
+              <input type="text" v-model="user.name">
+            </div>
+            <div class="form-group">
+              <label>邮箱</label>
+              <input type="email" v-model="user.email">
+            </div>
+            <div class="form-group">
+              <label>手机号码</label>
+              <input type="tel" v-model="user.phone">
+            </div>
+            <div class="form-group">
+              <label>头像</label>
+              <div class="avatar-upload">
+                <img :src="user.avatar" alt="当前头像">
+                <input type="file" accept="image/*" @change="handleAvatarUpload">
+              </div>
+            </div>
+            <div class="form-group">
+              <label>个人简介</label>
+              <textarea v-model="user.bio"></textarea>
+            </div>
+            <button class="save-btn" @click="saveProfile">保存更改</button>
+          </div>
+        </div>
+        
+        <!-- 账户安全 -->
+        <div v-if="activeTab === 'security'" class="security-section">
+          <h2>账户安全</h2>
+          <div class="security-options">
+            <div class="option">
+              <div class="option-info">
+                <h3>修改密码</h3>
+                <p>定期更改密码以确保账户安全</p>
+              </div>
+              <button class="action-btn" @click="showChangePassword = true">修改</button>
+            </div>
+          </div>
+          
+          <!-- 修改密码弹窗 -->
+          <div v-if="showChangePassword" class="modal">
+            <div class="modal-content">
+              <h3>修改密码</h3>
+              <div class="form-group">
+                <label>当前密码</label>
+                <input type="password" v-model="password.current">
+              </div>
+              <div class="form-group">
+                <label>新密码</label>
+                <input type="password" v-model="password.new">
+              </div>
+              <div class="form-group">
+                <label>确认新密码</label>
+                <input type="password" v-model="password.confirm">
+              </div>
+              <div class="modal-actions">
+                <button class="cancel-btn" @click="showChangePassword = false">取消</button>
+                <button class="confirm-btn" @click="changePassword">确认</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
+  </div>
 </template>
 
-<script setup lang="ts" name="ucenter">
-import { reactive, ref } from 'vue';
-import { VueCropper } from 'vue-cropper';
-import 'vue-cropper/dist/index.css';
-import avatar from '@/assets/img/img.jpg';
-import TabsComp from '../element/tabs.vue';
+<script setup>
+import { ref } from 'vue';
 
-const name = localStorage.getItem('vuems_name');
-const form = reactive({
-    new1: '',
-    new: '',
-    old: '',
+// 用户数据
+const user = ref({
+  id: 1,
+  name: '张三',
+  email: 'zhangsan@example.com',
+  phone: '13800138000',
+  avatar: '@/assets/img/img.jpg',
+  bio: '大数据分析专业学生，热爱编程和数据分析',
+  twoFactorEnabled: false
 });
-const onSubmit = () => {};
 
-const activeName = ref('label1');
+// 菜单项
+const menuItems = ref([
+  { id: 'profile', title: '个人信息', icon: 'fas fa-user' },
+  { id: 'security', title: '账户安全', icon: 'fas fa-shield-alt' },
+]);
 
-const avatarImg = ref(avatar);
-const imgSrc = ref(avatar);
-const cropImg = ref('');
-const cropper: any = ref();
+// 活动标签
+const activeTab = ref('profile');
 
-const setImage = (e: any) => {
-    const file = e.target.files[0];
-    if (!file.type.includes('image/')) {
-        return;
-    }
+// 修改密码相关状态
+const showChangePassword = ref(false);
+const password = ref({
+  current: '',
+  new: '',
+  confirm: ''
+});
+
+// 头像上传处理
+const handleAvatarUpload = (event) => {
+  const file = event.target.files[0];
+  if (file) {
     const reader = new FileReader();
-    reader.onload = (event: any) => {
-        imgSrc.value = event.target.result;
-        cropper.value && cropper.value.replace(event.target.result);
+    reader.onload = (e) => {
+      user.value.avatar = e.target.result;
     };
     reader.readAsDataURL(file);
+  }
 };
 
-const cropImage = () => {
-    cropImg.value = cropper.value?.getCroppedCanvas().toDataURL();
+// 保存个人信息
+const saveProfile = () => {
+  console.log('保存个人信息:', user.value);
+  // 这里应该调用API保存数据
+  alert('个人信息已保存');
 };
 
-const saveAvatar = () => {
-    avatarImg.value = cropImg.value;
+// 修改密码
+const changePassword = () => {
+  if (password.value.new !== password.value.confirm) {
+    alert('两次输入的密码不一致');
+    return;
+  }
+  
+  console.log('修改密码:', password.value);
+  // 这里应该调用API修改密码
+  alert('密码修改成功');
+  showChangePassword.value = false;
+  password.value = { current: '', new: '', confirm: '' };
 };
 </script>
 
 <style scoped>
-.user-container {
-    display: flex;
+.user-management {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+  background-color: #f8f9fa;
+  min-height: 100vh;
 }
 
-.user-profile {
-    position: relative;
-}
-
-.user-profile-bg {
-    width: 100%;
-    height: 200px;
-    background-image: url('../../assets/img/ucenter-bg.jpg');
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
-}
-
-.user-profile {
-    width: 500px;
-    margin-right: 20px;
-    flex: 0 0 auto;
-    align-self: flex-start;
-}
-
-.user-avatar-wrap {
-    position: absolute;
-    top: 135px;
-    width: 100%;
-    text-align: center;
-}
-
-.user-avatar {
-    border: 5px solid #fff;
-    border-radius: 50%;
-    overflow: hidden;
-    box-shadow: 0 7px 12px 0 rgba(62, 57, 107, 0.16);
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 0;
+  border-bottom: 1px solid #e0e0e0;
 }
 
 .user-info {
-    text-align: center;
-    padding: 80px 0 30px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
 }
 
-.info-name {
-    margin: 0 0 20px;
-    font-size: 22px;
-    font-weight: 500;
-    color: #373a3c;
+.avatar img {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  object-fit: cover;
 }
 
-.info-desc {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 5px;
+.name {
+  font-size: 18px;
+  font-weight: 600;
 }
 
-.info-desc,
-.info-desc a {
-    font-size: 18px;
-    color: #55595c;
+.content {
+  display: flex;
+  margin-top: 30px;
+  gap: 30px;
 }
 
-.info-icon {
-    margin-top: 10px;
+.sidebar {
+  width: 250px;
+  background: white;
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  padding: 20px;
 }
 
-.info-icon i {
-    font-size: 30px;
-    margin: 0 10px;
-    color: #343434;
+.menu-item {
+  display: flex;
+  align-items: center;
+  padding: 15px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
 }
 
-.user-content {
-    flex: 1;
+.menu-item:hover {
+  background-color: #f0f5ff;
 }
 
-.user-tabpane {
-    padding: 10px 20px;
+.menu-item.active {
+  background-color: #e6f7ff;
+  color: #1890ff;
+  font-weight: 500;
 }
 
-.crop-wrap {
-    width: 600px;
-    height: 350px;
-    margin-bottom: 20px;
+.menu-item i {
+  margin-right: 10px;
+  font-size: 18px;
 }
 
-.crop-demo-btn {
-    position: relative;
+.main-content {
+  flex: 1;
+  background: white;
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  padding: 30px;
 }
 
-.crop-input {
-    position: absolute;
-    width: 100px;
-    height: 40px;
-    left: 0;
-    top: 0;
-    opacity: 0;
-    cursor: pointer;
+.profile-section h2, .security-section h2 {
+  margin-bottom: 25px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #f0f0f0;
 }
 
-.w500 {
-    width: 500px;
+.form-container {
+  max-width: 600px;
 }
 
-.user-footer {
-    display: flex;
-    border-top: 1px solid rgba(83, 70, 134, 0.1);
+.form-group {
+  margin-bottom: 20px;
 }
 
-.user-footer-item {
-    padding: 20px 0;
-    width: 33.3333333333%;
-    text-align: center;
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
 }
 
-.user-footer > div + div {
-    border-left: 1px solid rgba(83, 70, 134, 0.1);
+.form-group input, .form-group textarea {
+  width: 100%;
+  padding: 12px 15px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  font-size: 16px;
+  transition: all 0.3s;
 }
-</style>
 
-<style>
-.el-tabs.el-tabs--left {
-    height: 100%;
+.form-group input:focus, .form-group textarea:focus {
+  outline: none;
+  border-color: #40a9ff;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+}
+
+.form-group textarea {
+  height: 120px;
+  resize: vertical;
+}
+
+.avatar-upload {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.avatar-upload img {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.save-btn {
+  background-color: #1890ff;
+  color: white;
+  border: none;
+  padding: 12px 25px;
+  border-radius: 6px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.save-btn:hover {
+  background-color: #40a9ff;
+}
+
+.security-options {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.option {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  background: #fafafa;
+  border-radius: 8px;
+}
+
+.option-info h3 {
+  margin-bottom: 5px;
+}
+
+.option-info p {
+  color: #666;
+  font-size: 14px;
+}
+
+.action-btn {
+  background: white;
+  border: 1px solid #d9d9d9;
+  padding: 8px 15px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.action-btn:hover {
+  border-color: #40a9ff;
+  color: #1890ff;
+}
+
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 24px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  transition: .4s;
+  border-radius: 24px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 4px;
+  bottom: 4px;
+  background-color: white;
+  transition: .4s;
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background-color: #1890ff;
+}
+
+input:checked + .slider:before {
+  transform: translateX(26px);
+}
+
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: white;
+  padding: 30px;
+  border-radius: 10px;
+  width: 400px;
+}
+
+.modal h3 {
+  margin-bottom: 20px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.cancel-btn {
+  background: #f5f5f5;
+  border: 1px solid #d9d9d9;
+  padding: 8px 15px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.confirm-btn {
+  background: #1890ff;
+  color: white;
+  border: none;
+  padding: 8px 15px;
+  border-radius: 4px;
+  cursor: pointer;
 }
 </style>

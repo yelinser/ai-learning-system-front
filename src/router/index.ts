@@ -25,6 +25,22 @@ const routes: RouteRecordRaw[] = [
                 component: () => import('../views/dashboard_student.vue')
             },
             {
+                path: 'student_center',
+                name: 'student_center',
+                meta: {
+                    title: '个人中心',
+                },
+                component: () => import('../views/pages/ucenter.vue')
+            },
+            {
+                path: 'notices',
+                name: 'notices',
+                meta: {
+                    title: '通知中心',
+                },
+                component: () => import('../views/pages/notices.vue')
+            },
+            {
                 path: 'ai_teacher',
                 name: 'ai_teacher',
                 meta: {
@@ -53,25 +69,25 @@ const routes: RouteRecordRaw[] = [
                         name: 'course_notice',
                         meta: { title: '公告' },
                         component: () => import('@/views/pages/course_pages/announcement.vue')
-                    },
-                    {
-                        path: 'material',
-                        name: 'course_material',
-                        meta: { title: '课件' },
-                        component: () => import('@/views/pages/course_material.vue')
-                    },
-                    {
-                        path: 'exam',
-                        name: 'course_exam',
-                        meta: { title: '测试' },
-                        component: () => import('@/views/pages/course_exam.vue')
-                    },
-                    {
-                        path: 'discuss',
-                        name: 'course_discuss',
-                        meta: { title: '讨论区' },
-                        component: () => import('@/views/pages/course_discuss.vue')
-                    }
+                    }//,
+                    // {
+                    //     path: 'material',
+                    //     name: 'course_material',
+                    //     meta: { title: '课件' },
+                    //     component: () => import('@/views/pages/course_material.vue')
+                    // },
+                    // {
+                    //     path: 'exam',
+                    //     name: 'course_exam',
+                    //     meta: { title: '测试' },
+                    //     component: () => import('@/views/pages/course_exam.vue')
+                    // },
+                    // {
+                    //     path: 'discuss',
+                    //     name: 'course_discuss',
+                    //     meta: { title: '讨论区' },
+                    //     component: () => import('@/views/pages/course_discuss.vue')
+                    // }
                 ]
             }
         ]
@@ -97,6 +113,14 @@ const routes: RouteRecordRaw[] = [
                     title: '上传课件',
                 },
                 component: () => import('../views/element/upload.vue'),
+            },
+            {
+                path: 'monitor',
+                name: 'monitor',
+                meta: {
+                    title: '学生进度监控',
+                },
+                component: () => import('../views/pages/monitor.vue'),
             }
         ]
     },

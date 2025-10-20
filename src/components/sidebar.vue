@@ -61,6 +61,9 @@
                 <el-menu-item index="/home_teacher/knowledge" key="knowledge">
                     知识图谱
                 </el-menu-item>
+                <el-menu-item index="/home_teacher/monitor" key="monitor">
+                    学生进度监控
+                </el-menu-item>
             </template>
             <template v-else-if="parentRoute === '/home_student'">
                 <el-menu-item index="/home_student/student_dashboard" key="student_dashboard">
