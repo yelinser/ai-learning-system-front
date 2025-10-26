@@ -18,94 +18,45 @@
                         <el-button @click="resetView">
                             <el-icon><Refresh /></el-icon>重置
                         </el-button>
+                        <el-button @click="toggleForceLayout">
+                            <el-icon><Position /></el-icon>{{ forceLayout ? '停止布局' : '力导向布局' }}
+                        </el-button>
                     </el-button-group>
                     
                     <div class="filter-controls">
-                        <el-select v-model="selectedChapter" placeholder="选择章节" clearable>
+                        <el-select v-model="selectedChapter" placeholder="选择章节" clearable @change="updateGraph">
                             <el-option label="全部章节" value=""></el-option>
                             <el-option v-for="chapter in chapters" :key="chapter" :label="chapter" :value="chapter"></el-option>
                         </el-select>
                         
-                        <el-select v-model="selectedStatus" placeholder="学习状态" clearable>
+                        <el-select v-model="selectedStatus" placeholder="学习状态" clearable @change="updateGraph">
                             <el-option label="全部状态" value=""></el-option>
                             <el-option label="已掌握" value="mastered"></el-option>
                             <el-option label="学习中" value="learning"></el-option>
                             <el-option label="未学习" value="unlearned"></el-option>
                         </el-select>
+
+                        <el-select v-model="selectedType" placeholder="节点类型" clearable @change="updateGraph">
+                            <el-option label="全部类型" value=""></el-option>
+                            <el-option label="章节" value="chapter"></el-option>
+                            <el-option label="知识点" value="concept"></el-option>
+                            <el-option label="学习资源" value="resource"></el-option>
+                        </el-select>
                     </div>
                 </div>
                 
-                <!-- 知识图谱画布 -->
-                <div class="graph-canvas" ref="graphCanvas">
-                    <div class="graph-nodes">
-                        <div 
-                            v-for="node in filteredNodes" 
-                            :key="node.id"
-                            :class="[
-                                'graph-node',
-                                `node-type-${node.type}`,
-                                `node-status-${node.status}`
-                            ]"
-                            :style="{
-                                left: node.x + 'px',
-                                top: node.y + 'px',
-                                backgroundColor: getNodeColor(node)
-                            }"
-                            @click="showNodeDetail(node)"
-                        >
-                            <div class="node-icon">
-                                <el-icon v-if="node.type === 'concept'"><Collection /></el-icon>
-                                <el-icon v-if="node.type === 'resource'"><Document /></el-icon>
-                                <el-icon v-if="node.type === 'chapter'"><Folder /></el-icon>
-                            </div>
-                            <div class="node-label">{{ node.label }}</div>
-                            <div v-if="node.progress !== undefined" class="node-progress">
-                                <el-progress 
-                                    :percentage="node.progress" 
-                                    :show-text="false"
-                                    :stroke-width="4"
-                                />
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- 连接线 -->
-                    <svg class="graph-connections" :width="canvasWidth" :height="canvasHeight">
-                        <line 
-                            v-for="connection in filteredConnections" 
-                            :key="connection.id"
-                            :x1="connection.source.x" 
-                            :y1="connection.source.y"
-                            :x2="connection.target.x" 
-                            :y2="connection.target.y"
-                            :stroke="getConnectionColor(connection.type)"
-                            stroke-width="2"
-                            marker-end="url(#arrowhead)"
-                        />
-                        <defs>
-                            <marker 
-                                id="arrowhead" 
-                                markerWidth="10" 
-                                markerHeight="7" 
-                                refX="9" 
-                                refY="3.5" 
-                                orient="auto"
-                            >
-                                <polygon points="0 0, 10 3.5, 0 7" fill="#409eff" />
-                            </marker>
-                        </defs>
-                    </svg>
-                </div>
+                <!-- ECharts 知识图谱画布 -->
+                <div class="graph-canvas" ref="graphCanvas"></div>
             </div>
         </el-card>
 
         <!-- 节点详情弹窗 -->
-        <el-dialog v-model="nodeDetailVisible" :title="selectedNode?.label" width="600px">
+        <el-dialog v-model="nodeDetailVisible" :title="selectedNode?.name" width="600px">
             <div v-if="selectedNode" class="node-detail">
                 <el-descriptions :column="2" border>
                     <el-descriptions-item label="节点类型">
-                        <el-tag :type="getNodeTypeTag(selectedNode.type)">
-                            {{ getNodeTypeText(selectedNode.type) }}
+                        <el-tag :type="getNodeTypeTag(selectedNode.category)">
+                            {{ getNodeTypeText(selectedNode.category) }}
                         </el-tag>
                     </el-descriptions-item>
                     
@@ -145,6 +96,22 @@
                     </el-space>
                 </div>
 
+                <!-- 前置知识点 -->
+                <div v-if="selectedNode.prerequisites && selectedNode.prerequisites.length" class="prerequisites">
+                    <h4>前置知识点</h4>
+                    <el-space wrap>
+                        <el-tag 
+                            v-for="prereq in selectedNode.prerequisites" 
+                            :key="prereq.id"
+                            type="warning"
+                            @click="focusNode(prereq.id)"
+                            style="cursor: pointer;"
+                        >
+                            {{ prereq.name }}
+                        </el-tag>
+                    </el-space>
+                </div>
+
                 <!-- 学习建议 -->
                 <div v-if="selectedNode.suggestions && selectedNode.suggestions.length" class="learning-suggestions">
                     <h4>学习建议</h4>
@@ -158,7 +125,7 @@
             
             <template #footer>
                 <el-button @click="nodeDetailVisible = false">关闭</el-button>
-                <el-button v-if="selectedNode?.type === 'resource'" type="primary" @click="openResource(selectedNode)">
+                <el-button v-if="selectedNode?.category === 'resource'" type="primary" @click="openResource(selectedNode)">
                     查看资源
                 </el-button>
                 <el-button v-else type="primary" @click="startLearning(selectedNode)">
@@ -170,165 +137,286 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { ElMessage } from 'element-plus';
+import * as echarts from 'echarts';
 import {
     ZoomIn,
     ZoomOut,
     Refresh,
-    Collection,
     Document,
-    Folder
+    Position
 } from '@element-plus/icons-vue';
 
 // 节点类型定义
 interface GraphNode {
     id: string;
-    label: string;
-    type: 'concept' | 'resource' | 'chapter';
+    name: string;
+    category: 'concept' | 'resource' | 'chapter';
     status: 'mastered' | 'learning' | 'unlearned';
     progress?: number;
     chapter?: string;
     description?: string;
     relatedResources?: any[];
+    prerequisites?: { id: string; name: string }[];
     suggestions?: string[];
-    x: number;
-    y: number;
+    symbolSize?: number;
+    itemStyle?: any;
+    label?: any;
 }
 
-interface GraphConnection {
-    id: string;
-    source: GraphNode;
-    target: GraphNode;
-    type: 'prerequisite' | 'related' | 'contains';
+interface GraphLink {
+    source: string;
+    target: string;
+    lineStyle?: any;
+    label?: any;
 }
 
 // 响应式数据
 const graphCanvas = ref<HTMLElement>();
-const canvasWidth = ref(800);
-const canvasHeight = ref(600);
+let chart: echarts.ECharts | null = null;
 const selectedChapter = ref('');
 const selectedStatus = ref('');
+const selectedType = ref('');
 const nodeDetailVisible = ref(false);
 const selectedNode = ref<GraphNode | null>(null);
+const forceLayout = ref(true);
 
 // 模拟数据 - 在实际应用中这些数据应该从后端API获取
 const chapters = ref(['第一章: 基础概念', '第二章: 核心算法', '第三章: 高级应用']);
-const graphNodes = ref<GraphNode[]>([
-    {
-        id: '1',
-        label: '机器学习基础',
-        type: 'chapter',
-        status: 'mastered',
-        progress: 100,
-        chapter: '第一章: 基础概念',
-        description: '机器学习的基本概念和原理',
-        x: 400,
-        y: 100
-    },
-    {
-        id: '2',
-        label: '监督学习',
-        type: 'concept',
-        status: 'mastered',
-        progress: 90,
-        chapter: '第一章: 基础概念',
-        description: '使用标注数据进行模型训练',
-        x: 300,
-        y: 200
-    },
-    {
-        id: '3',
-        label: '线性回归',
-        type: 'concept',
-        status: 'learning',
-        progress: 60,
-        chapter: '第一章: 基础概念',
-        description: '最基本的回归算法',
-        x: 200,
-        y: 300
-    },
-    {
-        id: '4',
-        label: '逻辑回归',
-        type: 'concept',
-        status: 'unlearned',
-        progress: 0,
-        chapter: '第一章: 基础概念',
-        description: '用于分类问题的回归算法',
-        x: 400,
-        y: 300
-    },
-    {
-        id: '5',
-        label: '神经网络',
-        type: 'concept',
-        status: 'unlearned',
-        progress: 0,
-        chapter: '第二章: 核心算法',
-        description: '模拟人脑神经网络的算法',
-        x: 600,
-        y: 200
-    },
-    {
-        id: '6',
-        label: '深度学习讲义',
-        type: 'resource',
-        status: 'unlearned',
-        chapter: '第二章: 核心算法',
-        description: '深度学习的详细讲解',
-        x: 500,
-        y: 400
-    }
-]);
 
-const graphConnections = ref<GraphConnection[]>([
-    { id: 'c1', source: graphNodes.value[0], target: graphNodes.value[1], type: 'contains' },
-    { id: 'c2', source: graphNodes.value[1], target: graphNodes.value[2], type: 'prerequisite' },
-    { id: 'c3', source: graphNodes.value[1], target: graphNodes.value[3], type: 'prerequisite' },
-    { id: 'c4', source: graphNodes.value[1], target: graphNodes.value[4], type: 'related' },
-    { id: 'c5', source: graphNodes.value[4], target: graphNodes.value[5], type: 'contains' }
-]);
+// 知识图谱数据
+const graphData = ref({
+    nodes: [
+        {
+            id: '1',
+            name: '机器学习基础',
+            category: 'chapter',
+            status: 'mastered',
+            progress: 100,
+            chapter: '第一章: 基础概念',
+            description: '机器学习的基本概念和原理',
+            symbolSize: 50,
+            itemStyle: { color: '#67c23a' },
+            label: { show: true, fontSize: 14, fontWeight: 'bold' }
+        },
+        {
+            id: '2',
+            name: '监督学习',
+            category: 'concept',
+            status: 'mastered',
+            progress: 90,
+            chapter: '第一章: 基础概念',
+            description: '使用标注数据进行模型训练',
+            symbolSize: 40,
+            itemStyle: { color: '#67c23a' },
+            label: { show: true, fontSize: 12 }
+        },
+        {
+            id: '3',
+            name: '线性回归',
+            category: 'concept',
+            status: 'learning',
+            progress: 60,
+            chapter: '第一章: 基础概念',
+            description: '最基本的回归算法',
+            symbolSize: 35,
+            itemStyle: { color: '#e6a23c' },
+            label: { show: true, fontSize: 12 }
+        },
+        {
+            id: '4',
+            name: '逻辑回归',
+            category: 'concept',
+            status: 'unlearned',
+            progress: 0,
+            chapter: '第一章: 基础概念',
+            description: '用于分类问题的回归算法',
+            symbolSize: 35,
+            itemStyle: { color: '#909399' },
+            label: { show: true, fontSize: 12 }
+        },
+        {
+            id: '5',
+            name: '神经网络',
+            category: 'concept',
+            status: 'unlearned',
+            progress: 0,
+            chapter: '第二章: 核心算法',
+            description: '模拟人脑神经网络的算法',
+            symbolSize: 40,
+            itemStyle: { color: '#909399' },
+            label: { show: true, fontSize: 12 }
+        },
+        {
+            id: '6',
+            name: '深度学习讲义',
+            category: 'resource',
+            status: 'unlearned',
+            chapter: '第二章: 核心算法',
+            description: '深度学习的详细讲解',
+            symbolSize: 30,
+            itemStyle: { color: '#909399' },
+            label: { show: true, fontSize: 10 }
+        },
+        {
+            id: '7',
+            name: '无监督学习',
+            category: 'concept',
+            status: 'learning',
+            progress: 40,
+            chapter: '第一章: 基础概念',
+            description: '从无标注数据中学习模式',
+            symbolSize: 35,
+            itemStyle: { color: '#e6a23c' },
+            label: { show: true, fontSize: 12 }
+        },
+        {
+            id: '8',
+            name: '聚类算法',
+            category: 'concept',
+            status: 'unlearned',
+            progress: 0,
+            chapter: '第一章: 基础概念',
+            description: '将数据分组到不同的簇中',
+            symbolSize: 30,
+            itemStyle: { color: '#909399' },
+            label: { show: true, fontSize: 12 }
+        }
+    ] as GraphNode[],
+    links: [
+        { source: '1', target: '2', lineStyle: { color: '#67c23a', width: 3 } },
+        { source: '2', target: '3', lineStyle: { color: '#f56c6c', width: 2 } },
+        { source: '2', target: '4', lineStyle: { color: '#f56c6c', width: 2 } },
+        { source: '2', target: '5', lineStyle: { color: '#409eff', width: 2 } },
+        { source: '5', target: '6', lineStyle: { color: '#67c23a', width: 2 } },
+        { source: '2', target: '7', lineStyle: { color: '#409eff', width: 2 } },
+        { source: '7', target: '8', lineStyle: { color: '#f56c6c', width: 2 } }
+    ] as GraphLink[]
+});
 
-// 计算属性
-const filteredNodes = computed(() => {
-    let nodes = graphNodes.value;
-    
+// 计算属性 - 过滤节点
+const filteredGraphData = computed(() => {
+    let nodes = [...graphData.value.nodes];
+    let links = [...graphData.value.links];
+
+    // 根据章节过滤
     if (selectedChapter.value) {
         nodes = nodes.filter(node => node.chapter === selectedChapter.value);
     }
     
+    // 根据状态过滤
     if (selectedStatus.value) {
         nodes = nodes.filter(node => node.status === selectedStatus.value);
     }
-    
-    return nodes;
-});
 
-const filteredConnections = computed(() => {
-    return graphConnections.value.filter(conn => 
-        filteredNodes.value.includes(conn.source) && 
-        filteredNodes.value.includes(conn.target)
+    // 根据类型过滤
+    if (selectedType.value) {
+        nodes = nodes.filter(node => node.category === selectedType.value);
+    }
+
+    // 过滤连接，只保留两个端点都在过滤后节点中的连接
+    const nodeIds = new Set(nodes.map(node => node.id));
+    links = links.filter(link => 
+        nodeIds.has(link.source as string) && nodeIds.has(link.target as string)
     );
+
+    return { nodes, links };
 });
 
 // 方法
-const getNodeColor = (node: GraphNode) => {
-    const colors = {
-        mastered: '#67c23a',
-        learning: '#e6a23c',
-        unlearned: '#909399'
+const initChart = () => {
+    if (!graphCanvas.value) return;
+
+    chart = echarts.init(graphCanvas.value);
+    
+    const option = {
+        tooltip: {
+            formatter: (params: any) => {
+                if (params.dataType === 'node') {
+                    const node = params.data as GraphNode;
+                    return `
+                        <div style="text-align: left;">
+                            <div style="font-weight: bold; margin-bottom: 5px;">${node.name}</div>
+                            <div>类型: ${getNodeTypeText(node.category)}</div>
+                            <div>状态: ${getStatusText(node.status)}</div>
+                            ${node.progress !== undefined ? `<div>进度: ${node.progress}%</div>` : ''}
+                            ${node.chapter ? `<div>章节: ${node.chapter}</div>` : ''}
+                        </div>
+                    `;
+                }
+                return '';
+            }
+        },
+        series: [{
+            type: 'graph',
+            layout: forceLayout.value ? 'force' : 'circular',
+            force: {
+                repulsion: 200,
+                gravity: 0.1,
+                edgeLength: 100,
+                layoutAnimation: true
+            },
+            circular: {
+                rotateLabel: true
+            },
+            data: filteredGraphData.value.nodes,
+            links: filteredGraphData.value.links,
+            categories: [
+                { name: 'chapter', itemStyle: { color: '#67c23a' } },
+                { name: 'concept', itemStyle: { color: '#409eff' } },
+                { name: 'resource', itemStyle: { color: '#e6a23c' } }
+            ],
+            roam: true,
+            focusNodeAdjacency: true,
+            label: {
+                show: true,
+                position: 'right',
+                formatter: '{b}',
+                fontSize: 12
+            },
+            lineStyle: {
+                color: 'source',
+                curveness: 0.3
+            },
+            emphasis: {
+                focus: 'adjacency',
+                lineStyle: {
+                    width: 4
+                }
+            }
+        }]
     };
-    return colors[node.status];
+
+    chart.setOption(option);
+
+    // 添加点击事件
+    chart.on('click', (params: any) => {
+        if (params.dataType === 'node') {
+            showNodeDetail(params.data as GraphNode);
+        }
+    });
+
+    // 添加双击事件 - 聚焦节点
+    chart.on('dblclick', (params: any) => {
+        if (params.dataType === 'node') {
+            focusNode(params.data.id);
+        }
+    });
 };
 
-const getConnectionColor = (type: string) => {
-    const colors = {
-        prerequisite: '#f56c6c',
-        related: '#409eff',
-        contains: '#67c23a'
+const updateGraph = () => {
+    if (!chart) return;
+    
+    const option = {
+        series: [{
+            data: filteredGraphData.value.nodes,
+            links: filteredGraphData.value.links,
+            layout: forceLayout.value ? 'force' : 'circular'
+        }]
     };
-    return colors[type] || '#409eff';
+    
+    chart.setOption(option);
 };
 
 const getNodeTypeTag = (type: string) => {
@@ -372,40 +460,73 @@ const showNodeDetail = (node: GraphNode) => {
     nodeDetailVisible.value = true;
 };
 
+const focusNode = (nodeId: string) => {
+    if (!chart) return;
+    
+    chart.dispatchAction({
+        type: 'focusNodeAdjacency',
+        dataIndex: graphData.value.nodes.findIndex(node => node.id === nodeId)
+    });
+};
+
 const openResource = (resource: any) => {
-    ElMessage.success(`打开资源: ${resource.label}`);
+    ElMessage.success(`打开资源: ${resource.name}`);
     // 实际应用中这里应该跳转到资源详情页面
 };
 
 const startLearning = (node: GraphNode) => {
-    ElMessage.success(`开始学习: ${node.label}`);
+    ElMessage.success(`开始学习: ${node.name}`);
     // 实际应用中这里应该跳转到学习页面
 };
 
 const zoomIn = () => {
-    ElMessage.info('放大功能');
-    // 实现放大逻辑
+    if (!chart) return;
+    chart.dispatchAction({
+        type: 'zoom',
+        scale: 1.2
+    });
 };
 
 const zoomOut = () => {
-    ElMessage.info('缩小功能');
-    // 实现缩小逻辑
+    if (!chart) return;
+    chart.dispatchAction({
+        type: 'zoom',
+        scale: 0.8
+    });
 };
 
 const resetView = () => {
     selectedChapter.value = '';
     selectedStatus.value = '';
+    selectedType.value = '';
+    updateGraph();
     ElMessage.success('视图已重置');
+};
+
+const toggleForceLayout = () => {
+    forceLayout.value = !forceLayout.value;
+    updateGraph();
+};
+
+const handleResize = () => {
+    if (chart) {
+        chart.resize();
+    }
 };
 
 // 生命周期
 onMounted(() => {
     nextTick(() => {
-        if (graphCanvas.value) {
-            canvasWidth.value = graphCanvas.value.clientWidth;
-            canvasHeight.value = graphCanvas.value.clientHeight;
-        }
+        initChart();
+        window.addEventListener('resize', handleResize);
     });
+});
+
+onUnmounted(() => {
+    if (chart) {
+        chart.dispose();
+    }
+    window.removeEventListener('resize', handleResize);
 });
 </script>
 
@@ -437,71 +558,8 @@ onMounted(() => {
 }
 
 .graph-canvas {
-    position: relative;
     width: 100%;
     height: 600px;
-    overflow: hidden;
-}
-
-.graph-connections {
-    position: absolute;
-    top: 0;
-    left: 0;
-    pointer-events: none;
-}
-
-.graph-nodes {
-    position: relative;
-    width: 100%;
-    height: 100%;
-}
-
-.graph-node {
-    position: absolute;
-    width: 120px;
-    padding: 10px;
-    border-radius: 8px;
-    box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
-    cursor: pointer;
-    transition: all 0.3s ease;
-    text-align: center;
-    color: white;
-    transform: translate(-50%, -50%);
-}
-
-.graph-node:hover {
-    transform: translate(-50%, -50%) scale(1.05);
-    box-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.2);
-}
-
-.node-icon {
-    font-size: 24px;
-    margin-bottom: 5px;
-}
-
-.node-label {
-    font-size: 12px;
-    font-weight: bold;
-    margin-bottom: 5px;
-}
-
-.node-progress {
-    margin-top: 5px;
-}
-
-.node-type-chapter {
-    width: 140px;
-    min-height: 80px;
-}
-
-.node-type-concept {
-    width: 100px;
-    min-height: 60px;
-}
-
-.node-type-resource {
-    width: 110px;
-    min-height: 70px;
 }
 
 .node-detail {
@@ -509,11 +567,13 @@ onMounted(() => {
 }
 
 .related-resources,
+.prerequisites,
 .learning-suggestions {
     margin-top: 20px;
 }
 
 .related-resources h4,
+.prerequisites h4,
 .learning-suggestions h4 {
     margin-bottom: 10px;
     color: #303133;

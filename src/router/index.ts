@@ -25,6 +25,14 @@ const routes: RouteRecordRaw[] = [
                 component: () => import('../views/dashboard_student.vue')
             },
             {
+                path:'learning_path',
+                name:'learning_path',
+                meta:{  
+                    title:'学习路径推荐',
+                },     
+                component:()=>import('../views/pages/learning_path.vue')
+            },
+            {
                 path: 'student_center',
                 name: 'student_center',
                 meta: {
@@ -33,8 +41,8 @@ const routes: RouteRecordRaw[] = [
                 component: () => import('../views/pages/ucenter.vue')
             },
             {
-                path: 'notices',
-                name: 'notices',
+                path: 's_notices',
+                name: 's_notices',
                 meta: {
                     title: '通知中心',
                 },
@@ -57,6 +65,14 @@ const routes: RouteRecordRaw[] = [
                 component:()=>import('../views/pages/knowledge_graph.vue')
             },
             {
+                path: 'video/:id',
+                name: 'video-display',
+                component: () => import('../views/pages/course_pages/video_display.vue'),
+                meta: {
+                    title: '视频播放',
+                },
+            },  
+            {
                 path: 'course_detail',
                 name: 'course_detail',
                 meta: {
@@ -69,19 +85,28 @@ const routes: RouteRecordRaw[] = [
                         name: 'course_notice',
                         meta: { title: '公告' },
                         component: () => import('@/views/pages/course_pages/announcement.vue')
-                    }//,
-                    // {
-                    //     path: 'material',
-                    //     name: 'course_material',
-                    //     meta: { title: '课件' },
-                    //     component: () => import('@/views/pages/course_material.vue')
-                    // },
-                    // {
-                    //     path: 'exam',
-                    //     name: 'course_exam',
-                    //     meta: { title: '测试' },
-                    //     component: () => import('@/views/pages/course_exam.vue')
-                    // },
+                    },
+                    {
+                        path: 'material',
+                        name: 'course_material',
+                        meta: { title: '课件' },
+                        component: () => import('@/views/pages/course_pages/course_material.vue')
+                    },
+                    {
+                        path: 'set_test',
+                        name: 'set_test',
+                        meta: { title: '测试' },
+                        component: () => import('../views/pages/course_pages/set_test.vue')
+                    },
+                    {
+                        path: 'test',
+                        name: 'test',
+                        meta: { title: '测试' },
+                        props: route => ({ 
+                            count: route.query.count 
+                        }),
+                        component: () => import('../views/pages/course_pages/test.vue')
+                    },
                     // {
                     //     path: 'discuss',
                     //     name: 'course_discuss',
@@ -107,6 +132,41 @@ const routes: RouteRecordRaw[] = [
                 component: () => import('../views/dashboard_teacher.vue')
             },
             {
+                path: 't_notices',
+                name: 't_notices',
+                meta: {
+                    title: '通知中心',
+                    noAuth: false
+                },
+                component: () => import(/* webpackChunkName: "dashboard" */ '../views/pages/notices.vue'),
+            },
+            {
+                path: 'teacher_center',
+                name: 'teacher_center',
+                meta: {
+                    title: '个人中心',
+                },
+                component: () => import(/* webpackChunkName: "ucenter" */ '../views/pages/ucenter.vue'),
+            },
+            {
+                path: '/notices',
+                name: 'notices',
+                meta: {
+                    title: '通知中心',
+                    noAuth: false
+                },
+                component: () => import(/* webpackChunkName: "dashboard" */ '../views/pages/notices.vue'),
+            },
+            {
+                path: 'knowledge_manage',
+                name: 'knowledge_manage',
+                meta: {
+                    title: '知识管理',
+                    //permiss: 'teacher'
+                },
+                component: () => import('../views/pages/knowledge_base_manage.vue')
+            },
+            {
                 path: 'upload',
                 name: 'upload',
                 meta: {
@@ -121,6 +181,14 @@ const routes: RouteRecordRaw[] = [
                     title: '学生进度监控',
                 },
                 component: () => import('../views/pages/monitor.vue'),
+            },
+            {
+                path: 'question_bank',
+                name: 'question_bank',
+                meta: {
+                    title: '题库管理',
+                },
+                component: () => import('../views/pages/question_bank.vue'),
             }
         ]
     },
@@ -129,6 +197,15 @@ const routes: RouteRecordRaw[] = [
         name: 'Home',
         component: Home,
         children: [
+            {
+                path: '/notices',
+                name: 'notices',
+                meta: {
+                    title: '通知中心',
+                    noAuth: false
+                },
+                component: () => import(/* webpackChunkName: "dashboard" */ '../views/pages/notices.vue'),
+            },
             {
                 path: '/dashboard',
                 name: 'dashboard',

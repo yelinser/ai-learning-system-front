@@ -58,8 +58,11 @@
                 <el-menu-item index="/home_teacher/upload" key="upload">
                     上传课件
                 </el-menu-item>
-                <el-menu-item index="/home_teacher/knowledge" key="knowledge">
-                    知识图谱
+                <el-menu-item index="/home_teacher/knowledge_manage" key="knowledge_manage">
+                    知识管理
+                </el-menu-item>
+                <el-menu-item index="/home_teacher/question_bank" key="knowledge_manage">
+                    题库管理
                 </el-menu-item>
                 <el-menu-item index="/home_teacher/monitor" key="monitor">
                     学生进度监控
@@ -69,8 +72,8 @@
                 <el-menu-item index="/home_student/student_dashboard" key="student_dashboard">
                     学生首页
                 </el-menu-item>
-                <el-menu-item index="/home_student/progress" key="progress">
-                    学习进度
+                <el-menu-item index="/home_student/learning_path" key="learning_path">
+                    学习路径推荐
                 </el-menu-item>
                 <el-menu-item index="/home_student/course_detail" key="course_detail">
                     课程详情
@@ -94,6 +97,7 @@ import { menuData } from '@/components/menu';
 
 const route = useRoute();
 const onRoutes = computed(() => {
+    console.log('Current route path:', route.path);
     return route.path;
 });
 

@@ -20,7 +20,7 @@
                         <i class="el-icon-lx-skin"></i>
                     </el-tooltip>
                 </div>
-                <div class="btn-icon" @click="router.push('/home_student/notices')">
+                <div class="btn-icon" @click="goToNotice">
                     <el-tooltip
                         effect="dark"
                         :content="message ? `有${message}条未读消息` : `消息中心`"
@@ -84,7 +84,24 @@ const handleCommand = (command: string) => {
         localStorage.removeItem('vuems_name');
         router.push('/login');
     } else if (command == 'user') {
-        router.push('/home_student/student_center');
+        if (router.currentRoute.value.path.startsWith('/home_teacher')) {
+            router.push('/home_teacher/teacher_center');
+        } else if (router.currentRoute.value.path.startsWith('/home_student')) {
+            router.push('/home_student/student_center');
+        } else
+        router.push('/ucenter');
+    }
+};
+
+// 新增：通知按钮跳转逻辑
+const goToNotice = () => {
+    const currentPath = router.currentRoute.value.path;
+    if (currentPath.startsWith('/home_teacher')) {
+        router.push('/home_teacher/t_notices');
+    } else if (currentPath.startsWith('/home_student')) {
+        router.push('/home_student/s_notices');
+    } else {
+        router.push('/notices');
     }
 };
 

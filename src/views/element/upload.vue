@@ -1,6 +1,6 @@
 <template>
   <div class="container">
-    <div class="content-title">上传 & 下载</div>
+    <div class="content-title">上传</div>
 
     <!-- 上传框 + 输入框左右排列 -->
     <div class="upload-input-box">
@@ -32,12 +32,12 @@
     </div>
 
     <!-- 下载框 -->
-    <div class="download-box">
+    <!-- <div class="download-box">
       <el-button type="primary" @click="downloadFile">
         下载文件
       </el-button>
       <p class="tips">点击按钮下载文件</p>
-    </div>
+    </div> -->
   </div>
 </template>
 
