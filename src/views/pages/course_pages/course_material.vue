@@ -7,7 +7,7 @@
           v-for="resource in chapter.resources" 
           :key="resource.id"
           class="resource-card"
-          @click="viewResource(resource)"
+          @click="viewResource(resource, chapter.id)"
         >
           <div class="resource-icon">
             <span v-if="resource.type === 'video'">📹</span>
@@ -88,10 +88,11 @@ const chapters = ref([
 ]);
 
 // 查看资源详情
-const viewResource = (resource) => {
+const viewResource = (resource,chapterId) => {
   router.push({
     name: 'video-display',
     params: { 
+      chapterId: chapterId,
       id: resource.id 
     }
   });

@@ -8,11 +8,10 @@
             :text-color="sidebar.textColor"
             router
         >
-            <template v-if="parentRoute === '/'">
-                <template v-for="item in menuData">
+         <template v-for="item in currentMenuData">
                     <!-- 原有侧边栏内容 -->
                     <template v-if="item.children">
-                        <el-sub-menu :index="item.index" :key="item.index" v-permiss="item.id">
+                        <el-sub-menu :index="item.index" :key="item.index">
                             <template #title>
                                 <el-icon>
                                     <component :is="item.icon"></component>
@@ -24,7 +23,6 @@
                                     v-if="subItem.children"
                                     :index="subItem.index"
                                     :key="subItem.index"
-                                    v-permiss="item.id"
                                 >
                                     <template #title>{{ subItem.title }}</template>
                                     <el-menu-item
@@ -35,14 +33,14 @@
                                         {{ threeItem.title }}
                                     </el-menu-item>
                                 </el-sub-menu>
-                                <el-menu-item v-else :index="subItem.index" v-permiss="item.id">
+                                <el-menu-item v-else :index="subItem.index">
                                     {{ subItem.title }}
                                 </el-menu-item>
                             </template>
                         </el-sub-menu>
                     </template>
                     <template v-else>
-                        <el-menu-item :index="item.index" :key="item.index" v-permiss="item.id">
+                        <el-menu-item :index="item.index" :key="item.index">
                             <el-icon>
                                 <component :is="item.icon"></component>
                             </el-icon>
@@ -50,41 +48,6 @@
                         </el-menu-item>
                     </template>
                 </template>
-            </template>
-            <template v-else-if="parentRoute === '/home_teacher'">
-                <el-menu-item index="/home_teacher/teacher_dashboard" key="teacher_dashboard">
-                    教师首页
-                </el-menu-item>
-                <el-menu-item index="/home_teacher/upload" key="upload">
-                    上传课件
-                </el-menu-item>
-                <el-menu-item index="/home_teacher/knowledge_manage" key="knowledge_manage">
-                    知识管理
-                </el-menu-item>
-                <el-menu-item index="/home_teacher/question_bank" key="knowledge_manage">
-                    题库管理
-                </el-menu-item>
-                <el-menu-item index="/home_teacher/monitor" key="monitor">
-                    学生进度监控
-                </el-menu-item>
-            </template>
-            <template v-else-if="parentRoute === '/home_student'">
-                <el-menu-item index="/home_student/student_dashboard" key="student_dashboard">
-                    学生首页
-                </el-menu-item>
-                <el-menu-item index="/home_student/learning_path" key="learning_path">
-                    学习路径推荐
-                </el-menu-item>
-                <el-menu-item index="/home_student/course_detail" key="course_detail">
-                    课程详情
-                </el-menu-item>
-                <el-menu-item index="/home_student/knowledge_graph" key="knowledge_graph">
-                    知识图谱
-                </el-menu-item>
-                <el-menu-item index="/home_student/ai_teacher" key="ai">
-                    AI助教
-                </el-menu-item>
-            </template>
         </el-menu>
     </div>
 </template>
@@ -93,25 +56,30 @@
 import { computed } from 'vue';
 import { useSidebarStore } from '../store/sidebar';
 import { useRoute } from 'vue-router';
-import { menuData } from '@/components/menu';
+import { menuData , teacherMenuData , studentMenuData, adminMenuData} from '@/components/menu';
 
 const route = useRoute();
 const onRoutes = computed(() => {
     console.log('Current route path:', route.path);
+    // 如果当前路由的meta中设置了activeMenu，则使用它作为激活菜单的index
+    if (route.meta.activeMenu) {
+        return route.meta.activeMenu;
+    }
     return route.path;
 });
 
 const sidebar = useSidebarStore();
 
-const parentRoute = computed(() => {
-    // Extract the parent route from the current path
+const currentMenuData = computed(() => {
     const path = route.path;
     if (path.startsWith('/home_teacher')) {
-        return '/home_teacher';
+        return teacherMenuData;
     } else if (path.startsWith('/home_student')) {
-        return '/home_student';
+        return studentMenuData;
+    }else if (path.startsWith('/home_admin')) {
+        return adminMenuData;
     }
-    return '/';
+    return menuData;
 });
 
 </script>

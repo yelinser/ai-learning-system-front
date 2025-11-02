@@ -115,9 +115,9 @@ const submitForm = (formEl: FormInstance | undefined) => {
             }
             // 根据角色跳转不同页面
             if (param.role === 'teacher') {
-                router.push('/home_teacher'); // 教师首页
+                router.push('/home_teacher/teacher_dashboard'); // 教师首页
             } else {
-                router.push('/home_student'); // 学生首页
+                router.push('/home_student/student_dashboard'); // 学生首页
             }
 
             if (checked.value) {

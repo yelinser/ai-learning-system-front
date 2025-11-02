@@ -12,8 +12,24 @@ const routes: RouteRecordRaw[] = [
         redirect: '/login',
     },
     {
+        path:'/home_admin',
+        name:'home_admin',
+        component: Home,
+        children:[
+            {
+                path:'role_manage',
+                name:'role_manage',
+                meta:{
+                    title:'角色管理',
+                },
+                component:()=>import('../views/pages/role_manage.vue')
+            },
+        ]
+    },
+    {
         path: '/home_student',
         name: 'home_student',
+        redirect: '/home_student/student_dashboard',
         component: home_student,
         children:[
           {
@@ -65,21 +81,14 @@ const routes: RouteRecordRaw[] = [
                 component:()=>import('../views/pages/knowledge_graph.vue')
             },
             {
-                path: 'video/:id',
+                path: 'video/:chapterId/:id',
                 name: 'video-display',
                 component: () => import('../views/pages/course_pages/video_display.vue'),
                 meta: {
                     title: '视频播放',
+                    activeMenu: '/home_student/course_material',
                 },
             },  
-            {
-                path: 'course_detail',
-                name: 'course_detail',
-                meta: {
-                    title: '课程详情',
-                },
-                component: () => import('@/views/pages/course_detail.vue'),
-                children: [
                     {
                         path: 'notice',
                         name: 'course_notice',
@@ -95,17 +104,20 @@ const routes: RouteRecordRaw[] = [
                     {
                         path: 'set_test',
                         name: 'set_test',
-                        meta: { title: '测试' },
+                        meta: { title: '测试设置' },
                         component: () => import('../views/pages/course_pages/set_test.vue')
                     },
                     {
-                        path: 'test',
-                        name: 'test',
-                        meta: { title: '测试' },
+                        path: 'quiz',
+                        name: 'quiz',
+                        meta: { 
+                            title: '测试' ,
+                            activeMenu: '/home_student/set_test',
+                        },
                         props: route => ({ 
-                            count: route.query.count 
+                            id: route.query.count 
                         }),
-                        component: () => import('../views/pages/course_pages/test.vue')
+                        component: () => import('../views/pages/course_pages/quiz.vue')
                     },
                     // {
                     //     path: 'discuss',
@@ -113,13 +125,14 @@ const routes: RouteRecordRaw[] = [
                     //     meta: { title: '讨论区' },
                     //     component: () => import('@/views/pages/course_discuss.vue')
                     // }
-                ]
-            }
+                
+            
         ]
     },
     {
         path: '/home_teacher',
         name: 'home_teacher',
+        redirect: '/home_teacher/teacher_dashboard',
         component: home_teacher,
         children:[
             {
