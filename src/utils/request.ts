@@ -1,6 +1,7 @@
 import axios, { AxiosInstance, AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 
 const service: AxiosInstance = axios.create({
+    baseURL: 'http://patrickshao.site:8000',  // 后端地址在这里配置！
     timeout: 5000
 });
 
@@ -17,7 +18,7 @@ service.interceptors.request.use(
 service.interceptors.response.use(
     (response: AxiosResponse) => {
         if (response.status === 200) {
-            return response;
+            return response.data;
         } else {
             Promise.reject();
         }

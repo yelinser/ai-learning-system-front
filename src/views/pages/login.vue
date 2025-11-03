@@ -43,8 +43,8 @@
                     <el-checkbox class="pwd-checkbox" v-model="checked" label="记住密码" />
                     <el-link type="primary" @click="$router.push('/reset-pwd')">忘记密码</el-link>
                 </div>
-                <el-button class="login-btn" type="primary" size="large" @click="submitForm(login)">登录</el-button>
-                <p class="login-tips">Tips : 用户名和密码随便填。</p>
+                <el-button class="login-btn" type="primary" size="large" :loading="loading" @click="submitForm(login)">登录</el-button>
+                <p class="login-tips" v-if="loginError">{{ loginError }}</p>
                 <p class="login-text">
                     没有账号？<el-link type="primary" @click="$router.push('/register')">立即注册</el-link>
                 </p>
@@ -60,8 +60,10 @@ import { usePermissStore } from '@/store/permiss';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import type { FormInstance, FormRules } from 'element-plus';
+import { userLogin, type LoginParams } from '@/api/user';
 
-interface LoginInfo {
+// 使用从API导入的LoginParams接口
+interface LoginInfo extends LoginParams {
     username: string;
     password: string;
     role: string;
@@ -70,6 +72,8 @@ interface LoginInfo {
 const lgStr = localStorage.getItem('login-param');
 const defParam = lgStr ? JSON.parse(lgStr) : null;
 const checked = ref(lgStr ? true : false);
+const loading = ref(false);
+const loginError = ref('');
 
 const router = useRouter();
 const param = reactive<LoginInfo>({
@@ -78,7 +82,7 @@ const param = reactive<LoginInfo>({
     role: defParam?.role || 'student' // 默认角色为学生
 });
 
-// 新增角色验证规则
+// 验证规则
 const rules: FormRules = {
     username: [
         {
@@ -99,35 +103,87 @@ const rules: FormRules = {
 
 const permiss = usePermissStore();
 const login = ref<FormInstance>();
-const submitForm = (formEl: FormInstance | undefined) => {
-    if (!formEl) return;
-    formEl.validate((valid: boolean) => {
-        if (valid) {
-            ElMessage.success('登录成功');
-            localStorage.setItem('vuems_name', param.username);
-            localStorage.setItem('vuems_role', param.role); // 存储角色信息
-            
-            const keys = permiss.defaultList[param.username == 'admin' ? 'admin' : 'user'];
-            permiss.handleSet(keys);
-            if(param.username === 'admin') {
-                router.push('/dashboard'); // 管理员首页
-                return;
-            }
-            // 根据角色跳转不同页面
-            if (param.role === 'teacher') {
-                router.push('/home_teacher/teacher_dashboard'); // 教师首页
-            } else {
-                router.push('/home_student/student_dashboard'); // 学生首页
-            }
 
-            if (checked.value) {
-                localStorage.setItem('login-param', JSON.stringify(param));
-            } else {
-                localStorage.removeItem('login-param');
-            }
-        } else {
-            ElMessage.error('登录失败');
+const submitForm = async (formEl: FormInstance | undefined) => {
+    if (!formEl) return;
+    
+    loginError.value = '';
+    
+    formEl.validate(async (valid: boolean) => {
+        if (!valid) {
+            ElMessage.error('请填写完整的登录信息');
             return false;
+        }
+
+        loading.value = true;
+        
+        try {
+            // 调用登录API - 使用正确的参数
+            const response = await userLogin({
+                username: param.username,
+                password: param.password,
+                role: param.role
+            });
+            console.log('登录响应:', response);
+
+            if (response.success && response.data) {
+                ElMessage.success(response.message || '登录成功');
+                
+                // 保存用户信息到本地存储 - 根据后端响应结构调整
+                const userInfo = response.data.user;
+                const sessionToken = response.data.session_token;
+                
+                // 存储用户信息和token
+                localStorage.setItem('vuems_name', userInfo.name || userInfo.username);
+                localStorage.setItem('vuems_role', userInfo.role);
+                localStorage.setItem('session_token', sessionToken);
+                localStorage.setItem('user_info', JSON.stringify(userInfo));
+                
+                // 设置权限 - 根据实际用户角色设置
+                const keys = permiss.defaultList[userInfo.role === 'admin' ? 'admin' : 'user'];
+                permiss.handleSet(keys);
+                
+                // 记住密码功能
+                if (checked.value) {
+                    localStorage.setItem('login-param', JSON.stringify(param));
+                } else {
+                    localStorage.removeItem('login-param');
+                }
+                
+                // 根据用户角色跳转不同页面 - 使用后端返回的角色信息
+                if (userInfo.role === 'admin') {
+                    router.push('/dashboard');
+                } else if (userInfo.role === 'teacher') {
+                    router.push('/home_teacher/teacher_dashboard');
+                } else {
+                    router.push('/home_student/student_dashboard');
+                }
+            } else {
+                // 登录失败，显示后端返回的错误信息
+                loginError.value = response.message || '登录失败';
+                ElMessage.error(loginError.value);
+            }
+        } catch (error: any) {
+            console.error('登录错误:', error);
+            // 错误处理调整，匹配后端错误格式
+            if (error.response && error.response.data) {
+                // 后端返回的结构化错误
+                const errorData = error.response.data;
+                if (errorData.detail && Array.isArray(errorData.detail)) {
+                    // 处理验证错误
+                    loginError.value = errorData.detail[0]?.msg || '请求参数错误';
+                } else {
+                    loginError.value = errorData.message || errorData.detail || '登录失败';
+                }
+            } else if (error.message) {
+                // 网络错误或其他错误
+                loginError.value = error.message;
+            } else {
+                loginError.value = '网络错误，请稍后重试';
+            }
+            ElMessage.error(loginError.value);
+        } finally {
+            loading.value = false;
         }
     });
 };
@@ -191,7 +247,9 @@ tabs.clearTabs();
 
 .login-tips {
     font-size: 12px;
-    color: #999;
+    color: #ff4d4f;
+    text-align: center;
+    margin: 10px 0;
 }
 
 .login-text {
@@ -202,7 +260,7 @@ tabs.clearTabs();
     color: #787878;
 }
 
-/* 新增角色选择样式 */
+/* 角色选择样式 */
 .role-radio-group {
     display: flex;
     justify-content: space-between;

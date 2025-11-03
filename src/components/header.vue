@@ -61,6 +61,8 @@ import { onMounted } from 'vue';
 import { useSidebarStore } from '../store/sidebar';
 import { useRouter } from 'vue-router';
 import imgurl from '../assets/img/img.jpg';
+import { userLogout } from '@/api/user';
+import { ElMessage, ElMessageBox } from 'element-plus';
 
 const username: string | null = localStorage.getItem('vuems_name');
 const message: number = 2;
@@ -79,10 +81,41 @@ onMounted(() => {
 
 // 用户名下拉菜单选择事件
 const router = useRouter();
-const handleCommand = (command: string) => {
+const handleCommand = async (command: string) => {
     if (command == 'loginout') {
-        localStorage.removeItem('vuems_name');
-        router.push('/login');
+        try {
+            // 添加确认对话框
+            await ElMessageBox.confirm('确定要退出登录吗？', '提示', {
+                confirmButtonText: '确定',
+                cancelButtonText: '取消',
+                type: 'warning',
+            });
+            
+            const sessionToken = localStorage.getItem('session_token');
+            if (sessionToken) {
+                // 调用登出接口
+                const response = await userLogout(sessionToken);
+                
+                if (response.success) {
+                    ElMessage.success(response.message || '登出成功');
+                } else {
+                    ElMessage.error(response.message || '登出失败');
+                }
+            }
+            
+            // 清除所有用户相关数据
+            localStorage.removeItem('vuems_name');
+            localStorage.removeItem('vuems_role');
+            localStorage.removeItem('session_token');
+            localStorage.removeItem('user_info');
+            localStorage.removeItem('login-param');
+            
+            // 跳转到登录页
+            router.push('/login');
+        } catch (cancel) {
+            // 用户点击了取消
+            console.log('用户取消登出');
+        }
     } else if (command == 'user') {
         if (router.currentRoute.value.path.startsWith('/home_teacher')) {
             router.push('/home_teacher/teacher_center');
