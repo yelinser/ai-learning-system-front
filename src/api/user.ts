@@ -98,3 +98,27 @@ export const userLogout = (sessionToken: string): Promise<ApiResponse> => {
         }
     });
 };
+
+// 更新用户信息（需要根据实际后端接口添加）
+export const updateUserInfo = (sessionToken: string, data: Partial<UserInfo>): Promise<ApiResponse<UserInfo>> => {
+  return request({
+    url: '/api/users/update-info', // 请根据实际接口路径修改
+    method: 'put',
+    params: {
+      session_token: sessionToken
+    },
+    data
+  });
+};
+
+// 修改密码（需要根据实际后端接口添加）
+export const changePassword = (sessionToken: string, data: { current_password: string; new_password: string }): Promise<ApiResponse> => {
+  return request({
+    url: '/api/users/change-password', // 请根据实际接口路径修改
+    method: 'post',
+    params: {
+      session_token: sessionToken
+    },
+    data
+  });
+};

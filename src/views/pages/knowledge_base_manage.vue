@@ -3,7 +3,6 @@
     <!-- 左侧图谱 -->
     <div class="graph-box">
       <div ref="graphRef" class="graph"></div>
-      
       <!-- 工具栏 -->
       <div class="toolbar">
         <el-button type="primary" @click="showCreateNodeDialog">新建节点</el-button>
@@ -14,33 +13,24 @@
       </div>
     </div>
 
-    <!-- 右侧节点类型筛选和资源区 -->
+    <!-- 右侧 -->
     <div class="res-box">
       <!-- 节点类型筛选 -->
       <div class="filter-panel">
         <h4>节点类型筛选</h4>
         <el-checkbox-group v-model="selectedNodeTypes">
-          <el-checkbox 
-            v-for="type in nodeTypes" 
-            :key="type.value" 
-            :label="type.value"
-            :style="{ color: type.color }"
-          >
+          <el-checkbox v-for="type in nodeTypes" :key="type.value" :label="type.value" :style="{ color: type.color }">
             {{ type.label }} ({{ getNodeCountByType(type.value) }})
           </el-checkbox>
         </el-checkbox-group>
       </div>
 
       <!-- 上传 -->
-      <el-upload
-        class="upload"
-        drag
-        multiple
-        :show-file-list="false"
-        :http-request="handleUpload"
-        accept=".pdf,.ppt,.pptx,.mp4,.zip,.txt,.doc,.docx"
-      >
-        <el-icon class="el-icon--upload"><upload-filled /></el-icon>
+      <el-upload class="upload" drag multiple :show-file-list="false" :http-request="handleUpload"
+        accept=".pdf,.ppt,.pptx,.mp4,.zip,.txt,.doc,.docx">
+        <el-icon class="el-icon--upload">
+          <UploadFilled />
+        </el-icon>
         <div>拖拽或点击上传资源</div>
         <template #tip>
           <div class="el-upload__tip">支持pdf,ppt,pptx,mp4,zip,txt,doc,docx等格式</div>
@@ -50,23 +40,12 @@
       <!-- 节点列表 -->
       <div class="node-list">
         <h4>节点列表 ({{ filteredNodes.length }})</h4>
-        <el-input
-          v-model="nodeSearch"
-          placeholder="搜索节点..."
-          clearable
-          prefix-icon="Search"
-          size="small"
-          style="margin-bottom: 10px;"
-        />
+        <el-input v-model="nodeSearch" placeholder="搜索节点..." clearable prefix-icon="Search" size="small"
+          style="margin-bottom: 10px" />
         <el-scrollbar height="280px">
-          <div
-            v-for="node in filteredNodes"
-            :key="node.id"
-            class="node-item"
-            :class="{ selected: selectedNode === node.id }"
-            @click="selectNode(node.id)"
-            @dblclick="focusOnNode(node.id)"
-          >
+          <div v-for="node in filteredNodes" :key="node.id" class="node-item"
+            :class="{ selected: selectedNode === node.id }" @click="selectNode(node.id)"
+            @dblclick="focusOnNode(node.id)">
             <div class="node-color" :style="{ backgroundColor: node.color }"></div>
             <div class="node-info">
               <div class="node-name">{{ node.name }}</div>
@@ -75,26 +54,23 @@
             <div class="node-actions">
               <el-button link type="primary" @click.stop="editNode(node)">编辑</el-button>
               <el-button link type="danger" @click.stop="deleteNode(node.id)">删除</el-button>
+              <!-- 资源独有 -->
+              <el-button v-if="node.resourceId" link type="primary" @click.stop="downloadRes(node.resourceId)">下载
+              </el-button>
+              <el-button v-if="node.resourceId" link @click.stop="extractK(node.resourceId)">提取知识点</el-button>
             </div>
           </div>
         </el-scrollbar>
       </div>
 
       <!-- 历史记录入口 -->
-      <el-button class="hist-btn" text @click="histDrawer = true">
-        版本历史
-      </el-button>
+      <el-button class="hist-btn" text @click="histDrawer = true">版本历史</el-button>
     </div>
 
     <!-- 历史抽屉 -->
     <el-drawer v-model="histDrawer" title="版本历史" direction="rtl" size="400">
       <el-timeline>
-        <el-timeline-item
-          v-for="h in history"
-          :key="h.id"
-          :timestamp="h.time"
-          :color="h.color"
-        >
+        <el-timeline-item v-for="h in history" :key="h.id" :timestamp="h.time" :color="h.color">
           {{ h.desc }}
         </el-timeline-item>
       </el-timeline>
@@ -108,12 +84,7 @@
         </el-form-item>
         <el-form-item label="节点类型">
           <el-select v-model="nodeForm.type" placeholder="选择节点类型">
-            <el-option
-              v-for="type in nodeTypes"
-              :key="type.value"
-              :label="type.label"
-              :value="type.value"
-            >
+            <el-option v-for="type in nodeTypes" :key="type.value" :label="type.label" :value="type.value">
               <span :style="{ color: type.color }">{{ type.label }}</span>
             </el-option>
           </el-select>
@@ -142,28 +113,63 @@ import * as echarts from 'echarts'
 import { UploadFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import type { ECBasicOption } from 'echarts/types/dist/shared'
+import axios from 'axios'
 
-// 1. 图谱实例
-const graphRef = ref<HTMLDivElement>()
-let chart: echarts.ECharts
+const BASE = 'http://patrickshao.site:8000'
 
-// 2. 节点类型定义
-const nodeTypes = ref([
-  { value: 'concept', label: '概念', color: '#2d8cf0' },
-  { value: 'resource', label: '资源', color: '#00bcd4' },
-  { value: 'knowledge1', label: '一级知识点', color: '#64d572' },
-  { value: 'knowledge2', label: '二级知识点', color: '#f25e43' },
-  { value: 'knowledge3', label: '三级知识点', color: '#ff9f40' }
-])
+/* ========== 资源管理接口封装（统一规范） ========== */
+const ResourceAPI = {
+  list: () => $get('/api/v1/resources/'),
+  upload: (form: FormData) =>
+    $post('/api/v1/resources/upload', form, {
+      'Content-Type': 'multipart/form-data',
+    }),
+  delete: (id: string) => $del(`/api/v1/resources/${id}`),
+  download: (id: string) =>
+    axios.get(`${BASE}/api/v1/resources/${id}/download`, { responseType: 'blob' }),
+  extract: (id: string) => $post(`/api/v1/resources/${id}/auto-extract-knowledge`),
+}
 
-// 3. 筛选状态
-const selectedNodeTypes = ref(['concept', 'resource', 'knowledge1', 'knowledge2', 'knowledge3'])
-const nodeSearch = ref('')
-const selectedNode = ref<string | null>(null)
-const linkingMode = ref(false)
-const linkStartNode = ref<string | null>(null)
+/* ========== 2. 内联工具：get/post/put/delete ========== */
+const $get = (url: string) => axios.get(BASE + url).then(r => r.data)
+const $post = (url: string, data?: any, headers?: any) =>
+  axios.post(BASE + url, data, { headers }).then(r => r.data)
+const $del = (url: string) => axios.delete(BASE + url).then(r => r.data)
 
-// 4. 节点和连线数据
+/* ========== 3. 接口（不封装文件，直接函数） ========== */
+/* 知识图谱 */
+const getConcepts = () => $get('/concepts')
+const getRelations = () => $get('/relationships')
+const addConcept = (body: { name: string; description?: string }) => $post('/concepts', body)
+const delConcept = (name: string) => $del(`/concepts/${encodeURIComponent(name)}`)
+
+/* 资源模块 */
+/* 资源模块 - 改为真实接口路径 */
+const listResources = () => $get('/api/v1/resources/') as Promise<Resource[]>
+
+const uploadResource = (form: FormData) =>
+  $post('/api/v1/resources/upload', form, {
+    'Content-Type': 'multipart/form-data',
+  }) as Promise<Resource>
+
+const deleteResource = (id: string) => $del(`/api/v1/resources/${id}`)
+
+const downloadResource = (id: string) =>
+  axios.get(`${BASE}/api/v1/resources/${id}/download`, {
+    responseType: 'blob',
+  })
+
+const autoExtractKnowledge = (id: string) =>
+  $post(`/api/v1/resources/${id}/auto-extract-knowledge`)
+
+/* ========== 4. 类型 ========== */
+interface Resource {
+  id: string
+  title: string
+  filename: string
+  course: string
+  chapter: string
+}
 interface KnowledgeNode {
   id: string
   name: string
@@ -173,232 +179,177 @@ interface KnowledgeNode {
   color: string
   desc: string
   type: string
+  resourceId?: string // 资源节点特有
 }
-
 interface KnowledgeLink {
   source: string
   target: string
 }
 
-const nodes = ref<KnowledgeNode[]>([
-  { 
-    id: 'n1', 
-    name: '函数概念', 
-    x: 100, 
-    y: 100, 
-    symbolSize: 60, 
-    color: '#2d8cf0', 
-    desc: '数学中的函数基本概念', 
-    type: 'concept' 
-  },
-  { 
-    id: 'n2', 
-    name: '几何证明', 
-    x: 300, 
-    y: 100, 
-    symbolSize: 60, 
-    color: '#64d572', 
-    desc: '几何证明方法', 
-    type: 'concept' 
-  },
+/* ========== 5. 响应式数据 ========== */
+const graphRef = ref<HTMLDivElement>()
+let chart: echarts.ECharts
+
+const nodeTypes = ref([
+  { value: 'concept', label: '概念', color: '#2d8cf0' },
+  { value: 'resource', label: '资源', color: '#00bcd4' },
+  { value: 'knowledge1', label: '一级知识点', color: '#64d572' },
+  { value: 'knowledge2', label: '二级知识点', color: '#f25e43' },
+  { value: 'knowledge3', label: '三级知识点', color: '#ff9f40' },
 ])
 
-const links = ref<KnowledgeLink[]>([
-  { source: 'n1', target: 'n2' }
-])
+const selectedNodeTypes = ref(['concept', 'resource', 'knowledge1', 'knowledge2', 'knowledge3'])
+const nodeSearch = ref('')
+const selectedNode = ref<string | null>(null)
+const linkingMode = ref(false)
+const linkStartNode = ref<string | null>(null)
 
-// 5. 过滤后的节点列表
-const filteredNodes = computed(() => {
-  return nodes.value.filter(node => 
-    selectedNodeTypes.value.includes(node.type) &&
-    node.name.toLowerCase().includes(nodeSearch.value.toLowerCase())
-  )
-})
+const nodes = ref<KnowledgeNode[]>([])
+const links = ref<KnowledgeLink[]>([])
 
-// 6. 节点操作函数
-const getNodeCountByType = (type: string) => {
-  return nodes.value.filter(node => node.type === type).length
+const filteredNodes = computed(() =>
+  nodes.value.filter(
+    node =>
+      selectedNodeTypes.value.includes(node.type) &&
+      node.name.toLowerCase().includes(nodeSearch.value.toLowerCase()),
+  ),
+)
+
+const history = ref<{ id: string; time: string; desc: string; color: string }[]>([])
+const histDrawer = ref(false)
+
+/* ========== 6. 工具函数 ========== */
+const getNodeCountByType = (type: string) => nodes.value.filter(n => n.type === type).length
+const getNodeTypeLabel = (type: string) => nodeTypes.value.find(t => t.value === type)?.label || type
+
+const selectNode = (id: string) => {
+  selectedNode.value = id
+  highlightNode(id)
+}
+const focusOnNode = (id: string) => {
+  const idx = nodes.value.findIndex(n => n.id === id)
+  if (idx >= 0 && chart) chart.dispatchAction({ type: 'focusNodeAdjacency', dataIndex: idx })
+}
+const highlightNode = (id: string) => {
+  const idx = nodes.value.findIndex(n => n.id === id)
+  if (idx >= 0 && chart) chart.dispatchAction({ type: 'highlight', dataIndex: idx })
+}
+const pushHistory = (desc: string) => {
+  history.value.unshift({ id: Date.now().toString(), time: new Date().toLocaleString(), desc, color: '#00bcd4' })
 }
 
-const getNodeTypeLabel = (type: string) => {
-  const found = nodeTypes.value.find(t => t.value === type)
-  return found ? found.label : type
-}
-
-const selectNode = (nodeId: string) => {
-  selectedNode.value = nodeId
-  // 高亮显示选中的节点
-  highlightNode(nodeId)
-}
-
-const focusOnNode = (nodeId: string) => {
-  const node = nodes.value.find(n => n.id === nodeId)
-  if (node && chart) {
-    chart.dispatchAction({
-      type: 'focusNodeAdjacency',
-      dataIndex: nodes.value.findIndex(n => n.id === nodeId)
-    })
-  }
-}
-
-const highlightNode = (nodeId: string) => {
-  if (chart) {
-    chart.dispatchAction({
-      type: 'highlight',
-      dataIndex: nodes.value.findIndex(n => n.id === nodeId)
-    })
-  }
-}
-
-// 7. 初始化图谱
+/* ========== 7. 图谱初始化 ========== */
 function initGraph() {
-  chart = echarts.init(graphRef.value!)
-  
+  if (!graphRef.value) return
+  chart = echarts.init(graphRef.value)
   const option: ECBasicOption = {
     backgroundColor: 'transparent',
     tooltip: {
       formatter: (params: any) => {
         if (params.dataType === 'node') {
-          const node = nodes.value.find(n => n.id === params.data.id)
-          return `
-            <div style="padding: 8px;">
-              <div style="font-weight: bold; margin-bottom: 4px;">${params.data.name}</div>
-              <div style="color: #666; font-size: 12px;">类型: ${getNodeTypeLabel(node?.type || '')}</div>
-              ${node?.desc ? `<div style="color: #666; font-size: 12px;">描述: ${node.desc}</div>` : ''}
-            </div>
-          `
+          const node = nodes.value.find(n => n.id === params.data.id)!
+          return `<div style="padding:8px">
+            <div style="font-weight:bold;margin-bottom:4px">${params.data.name}</div>
+            <div style="color:#666;font-size:12px">类型：${getNodeTypeLabel(node.type)}</div>
+            ${node.desc ? `<div style="color:#666;font-size:12px">描述：${node.desc}</div>` : ''}
+          </div>`
         }
-        return params.dataType === 'edge' ? `关联: ${params.data.source} → ${params.data.target}` : ''
-      }
+        return params.dataType === 'edge' ? `关联：${params.data.source} → ${params.data.target}` : ''
+      },
     },
     animationDurationUpdate: 300,
-    series: [{
-      type: 'graph',
-      layout: 'force',
-      force: {
-        repulsion: 200,
-        edgeLength: 100,
-        gravity: 0.1
+    series: [
+      {
+        type: 'graph',
+        layout: 'force',
+        force: { repulsion: 600, edgeLength: 200, gravity: 0.05 },
+        roam: true,
+        draggable: true,
+        data: nodes.value.map(n => ({
+          ...n,
+          symbolSize: n.symbolSize || 24,
+          itemStyle: { color: n.color },
+          label: { show: true, formatter: n.name },
+        })),
+        links: links.value,
+        lineStyle: { color: 'source', width: 3, curveness: 0.3 },
+        emphasis: { focus: 'adjacency', lineStyle: { width: 5 } },
       },
-      roam: true,
-      draggable: true,
-      data: nodes.value.map(n => ({ 
-        ...n, 
-        value: n.symbolSize,
-        itemStyle: { color: n.color },
-        label: { show: true, formatter: n.name }
-      })),
-      links: links.value,
-      emphasis: { 
-        focus: 'adjacency', 
-        itemStyle: { borderColor: '#ffdf22', borderWidth: 3 } 
-      },
-      lineStyle: {
-        color: 'source',
-        curveness: 0.3
-      }
-    }]
+    ],
   }
-  
   chart.setOption(option)
-  
-  // 节点点击事件
+
   chart.on('click', (params: any) => {
-    if (params.dataType === 'node') {
-      const nodeId = params.data.id
-      selectNode(nodeId)
-      
-      if (linkingMode.value) {
-        if (!linkStartNode.value) {
-          linkStartNode.value = nodeId
-          ElMessage.info(`已选择起始节点: ${params.data.name}`)
-        } else {
-          if (linkStartNode.value === nodeId) {
-            ElMessage.warning('不能连接节点自身')
-            linkStartNode.value = null
-            return
-          }
-          
-          // 创建新连接
-          const newLink: KnowledgeLink = {
-            source: linkStartNode.value,
-            target: nodeId
-          }
-          
-          // 检查是否已存在连接
-          const exists = links.value.some(link => 
-            (link.source === newLink.source && link.target === newLink.target) ||
-            (link.source === newLink.target && link.target === newLink.source)
-          )
-          
-          if (!exists) {
-            links.value.push(newLink)
-            history.value.unshift({
-              id: Date.now().toString(),
-              time: new Date().toLocaleString(),
-              desc: `创建连接: ${nodes.value.find(n => n.id === newLink.source)?.name} → ${nodes.value.find(n => n.id === newLink.target)?.name}`,
-              color: '#00bcd4'
-            })
-            updateChart()
-            ElMessage.success('连接创建成功')
-          } else {
-            ElMessage.warning('连接已存在')
-          }
-          
-          linkStartNode.value = null
-          linkingMode.value = false
-        }
+    if (params.dataType !== 'node') return
+    const id = params.data.id
+    selectNode(id)
+    if (!linkingMode.value) return
+    if (!linkStartNode.value) {
+      linkStartNode.value = id
+      ElMessage.info(`已选起始节点：${params.data.name}`)
+      return
+    }
+    if (linkStartNode.value === id) {
+      ElMessage.warning('不能连接自身')
+      linkStartNode.value = null
+      return
+    }
+    const newLink: KnowledgeLink = { source: linkStartNode.value, target: id }
+    const exist = links.value.some(
+      l =>
+        (l.source === newLink.source && l.target === newLink.target) ||
+        (l.source === newLink.target && l.target === newLink.source),
+    )
+    if (!exist) {
+      links.value.push(newLink)
+      pushHistory(`创建连接：${nodes.value.find(n => n.id === newLink.source)?.name} → ${nodes.value.find(n => n.id === newLink.target)?.name}`)
+      updateChart()
+      ElMessage.success('连接成功')
+    } else ElMessage.warning('连接已存在')
+    linkingMode.value = false
+    linkStartNode.value = null
+  })
+
+  chart.getZr().on('contextmenu', (ev: any) => {
+    ev.preventDefault()
+    const point = [ev.offsetX, ev.offsetY]
+    const seriesData: any[] = chart.getOption().series![0].data as any[]
+    let idx = -1
+    for (let i = 0; i < seriesData.length; i++) {
+      const px = chart.convertToPixel({ seriesIndex: 0 }, [seriesData[i].x, seriesData[i].y])
+      if (Math.abs(point[0] - px[0]) < seriesData[i].symbolSize && Math.abs(point[1] - px[1]) < seriesData[i].symbolSize) {
+        idx = i
+        break
       }
+    }
+    if (idx >= 0) {
+      const node = nodes.value[idx]
+      if (confirm(`确定删除节点「${node.name}」？`)) deleteNode(node.id)
     }
   })
-  
-  // 右键点击删除节点
-  chart.getZr().on('contextmenu', (event: any) => {
-    event.preventDefault();
-    const point = [event.offsetX, event.offsetY];
-    // 获取所有节点的像素位置，判断是否点击在某个节点上
-    const seriesData = chart.getOption().series?.[0]?.data || [];
-    let foundNodeIndex = -1;
-    for (let i = 0; i < seriesData.length; i++) {
-      const nodePixel = chart.convertToPixel({ seriesIndex: 0 }, [seriesData[i].x, seriesData[i].y]);
-      if (
-        Math.abs(point[0] - nodePixel[0]) < seriesData[i].symbolSize &&
-        Math.abs(point[1] - nodePixel[1]) < seriesData[i].symbolSize
-      ) {
-        foundNodeIndex = i;
-        break;
-      }
-    }
-    if (foundNodeIndex !== -1) {
-      const node = nodes.value[foundNodeIndex];
-      if (confirm(`确定要删除节点"${node.name}"吗？`)) {
-        deleteNode(node.id);
-      }
-    }
-  });
 }
 
-// 8. 更新图表
 function updateChart() {
-  if (chart) {
-    chart.setOption({
-      series: [{
-        data: nodes.value.map(n => ({ 
-          ...n, 
+  if (!chart) return
+  chart.setOption({
+    series: [
+      {
+        data: nodes.value.map(n => ({
+          ...n,
           value: n.symbolSize,
           itemStyle: { color: n.color },
-          label: { show: true, formatter: n.name }
+          label: { show: true, formatter: n.name },
         })),
-        links: links.value
-      }]
-    })
-  }
+        links: links.value,
+      },
+    ],
+  })
 }
 
-// 9. 节点创建和编辑
+/* ========== 8. 节点增删改 ========== */
 const nodeDlg = ref(false)
 const isEditing = ref(false)
-const nodeForm = ref({
+const nodeForm = ref<KnowledgeNode>({
   id: '',
   name: '',
   type: 'concept',
@@ -406,7 +357,7 @@ const nodeForm = ref({
   color: '#2d8cf0',
   symbolSize: 60,
   x: 0,
-  y: 0
+  y: 0,
 })
 
 const showCreateNodeDialog = () => {
@@ -419,67 +370,44 @@ const showCreateNodeDialog = () => {
     color: nodeTypes.value[0].color,
     symbolSize: 60,
     x: Math.random() * 400 + 100,
-    y: Math.random() * 300 + 100
+    y: Math.random() * 300 + 100,
   }
   nodeDlg.value = true
 }
-
 const editNode = (node: KnowledgeNode) => {
   isEditing.value = true
   nodeForm.value = { ...node }
   nodeDlg.value = true
 }
-
-const saveNode = () => {
-  if (!nodeForm.value.name.trim()) {
-    ElMessage.error('请输入节点名称')
-    return
-  }
-
+const saveNode = async () => {
+  if (!nodeForm.value.name.trim()) return ElMessage.error('请输入名称')
   if (isEditing.value) {
-    // 更新现有节点
-    const index = nodes.value.findIndex(n => n.id === nodeForm.value.id)
-    if (index !== -1) {
-      nodes.value[index] = { ...nodeForm.value }
-    }
+    const idx = nodes.value.findIndex(n => n.id === nodeForm.value.id)
+    if (idx >= 0) nodes.value[idx] = { ...nodeForm.value }
+    pushHistory(`编辑节点：${nodeForm.value.name}`)
   } else {
-    // 创建新节点
-    const newNode: KnowledgeNode = {
-      ...nodeForm.value,
-      id: 'node_' + Date.now().toString()
-    }
+    await addConcept({ name: nodeForm.value.name, description: nodeForm.value.desc })
+    const newNode: KnowledgeNode = { ...nodeForm.value, id: 'node_' + Date.now() }
     nodes.value.push(newNode)
+    pushHistory(`新建节点：${newNode.name}`)
   }
-
   updateChart()
   nodeDlg.value = false
-  ElMessage.success(isEditing.value ? '节点更新成功' : '节点创建成功')
+  ElMessage.success(isEditing.value ? '保存成功' : '创建成功')
 }
 
-// 10. 节点删除
-const deleteNode = (nodeId: string) => {
-  const nodeIndex = nodes.value.findIndex(n => n.id === nodeId)
-  if (nodeIndex === -1) return
-
-  const node = nodes.value[nodeIndex]
-  nodes.value.splice(nodeIndex, 1)
-  
-  // 删除相关连接
-  links.value = links.value.filter(link => 
-    link.source !== nodeId && link.target !== nodeId
-  )
-
-  history.value.unshift({
-    id: Date.now().toString(),
-    time: new Date().toLocaleString(),
-    desc: `删除节点: ${node.name}`,
-    color: '#f44336'
-  })
-
+const deleteNode = async (id: string) => {
+  const idx = nodes.value.findIndex(n => n.id === id)
+  if (idx < 0) return
+  const node = nodes.value[idx]
+  if (node.type === 'concept') await delConcept(node.name)
+  else await $del(`/nodes/${id}`)
+  nodes.value.splice(idx, 1)
+  links.value = links.value.filter(l => l.source !== id && l.target !== id)
+  pushHistory(`删除节点：${node.name}`)
   updateChart()
-  ElMessage.success('节点删除成功')
+  ElMessage.success('删除成功')
 }
-
 const deleteSelectedNode = () => {
   if (selectedNode.value) {
     deleteNode(selectedNode.value)
@@ -487,74 +415,138 @@ const deleteSelectedNode = () => {
   }
 }
 
-// 11. 文件上传处理
-const handleUpload = ({ file }: { file: File }) => {
-  const ext = file.name.split('.').pop()?.toLowerCase() || ''
+/* ========== 9. 文件上传（对接真实接口） ========== */
+/* ========== 9. 文件上传（对接真实接口） ========== */
+const handleUpload = async ({ file }: { file: File }) => {
   const allow = ['pdf', 'ppt', 'pptx', 'mp4', 'zip', 'txt', 'doc', 'docx']
-  
-  if (!allow.includes(ext)) {
-    ElMessage.error('不支持的文件类型')
-    return
+  const ext = file.name.split('.').pop()?.toLowerCase() || ''
+  if (!allow.includes(ext)) return ElMessage.error('不支持的文件类型')
+
+const form = new FormData()
+  form.append('file', file)
+  const res = await ResourceAPI.upload(form)  
+  try {
+    const res = await uploadResource(form)
+    const node: KnowledgeNode = {
+      id: 'r_' + res.id,
+      name: res.title || res.filename || file.name, // 若返回中title为空，用文件名代替
+      x: Math.random() * 400 + 100,
+      y: Math.random() * 300 + 100,
+      symbolSize: 50,
+      color: nodeTypes.value.find(t => t.value === 'resource')!.color,
+      desc: `${res.filename || file.name}（${res.course || '未知课程'} 第${res.chapter || '?'}章）`,
+      type: 'resource',
+      resourceId: res.id,
+    }
+    nodes.value.push(node)
+    updateChart()
+    pushHistory(`上传资源：${node.name}`)
+    ElMessage.success('上传成功')
+  } catch (e: any) {
+    ElMessage.error('上传失败：' + (e.message || '未知错误'))
   }
-
-  const nodeName = file.name.replace(/\.[^.]+$/, '')
-  const resourceType = nodeTypes.value.find(t => t.value === 'resource')
-  
-  const newNode: KnowledgeNode = {
-    id: 'res_' + Date.now().toString(),
-    name: nodeName,
-    x: Math.random() * 400 + 100,
-    y: Math.random() * 300 + 100,
-    symbolSize: 50,
-    color: resourceType?.color || '#64d572',
-    desc: `资源文件: ${file.name}`,
-    type: 'resource'
-  }
-
-  nodes.value.push(newNode)
-  updateChart()
-
-  history.value.unshift({
-    id: Date.now().toString(),
-    time: new Date().toLocaleString(),
-    desc: `上传资源: ${file.name}`,
-    color: '#64d572'
-  })
-
-  ElMessage.success('资源上传成功')
 }
 
-// 12. 历史记录
-const history = ref([
-  { id: '1', time: '2025-06-20 10:12', desc: '新建节点「二次函数」', color: '#00bcd4' },
-  { id: '2', time: '2025-06-19 18:45', desc: '上传资源《代数教案》', color: '#64d572' },
-])
-const histDrawer = ref(false)
+/* ========== 10. 资源下载 & 删除 & 知识点提取 ========== */
+const downloadRes = async (id: string) => {
+  try {
+    const response = await downloadResource(id)
+    const blob = response.data
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${id}.zip` // 可根据后端返回的filename字段进一步优化
+    a.click()
+    URL.revokeObjectURL(url)
+    ElMessage.success('下载开始')
+  } catch (e: any) {
+    ElMessage.error('下载失败：' + (e.message || '未知错误'))
+  }
+}
 
-// 13. 监视筛选条件变化
-watch([selectedNodeTypes, nodeSearch], () => {
-  updateChart()
-})
-
-// 14. 挂载
-onMounted(() => {
-  initGraph()
-  // 窗口大小变化时重绘图表
-  window.addEventListener('resize', () => {
-    if (chart) {
-      chart.resize()
+const delRes = async (id: string) => {
+  try {
+    await deleteResource(id)
+    const idx = nodes.value.findIndex(n => n.resourceId === id)
+    if (idx > -1) {
+      const name = nodes.value[idx].name
+      nodes.value.splice(idx, 1)
+      links.value = links.value.filter(l => l.source !== nodes.value[idx]?.id && l.target !== nodes.value[idx]?.id)
+      updateChart()
+      pushHistory(`删除资源节点：${name}`)
+      ElMessage.success('已删除')
     }
-  })
+  } catch (e: any) {
+    ElMessage.error('删除失败：' + e.message)
+  }
+}
+
+const extractK = async (id: string) => {
+  try {
+    await autoExtractKnowledge(id)
+    ElMessage.success('已触发自动知识提取')
+    await loadGraph() // 可选：重新加载图谱
+  } catch (e: any) {
+    ElMessage.error('提取失败：' + (e.message || '未知错误'))
+  }
+}
+/* ========== 11. 加载全图（概念+关系+资源） ========== */
+const loadGraph = async () => {
+  try {
+    const [concepts, relations, resources] = await Promise.all([
+      getConcepts(),
+      getRelations(),
+      listResources(),
+    ])
+    const conceptNodes: KnowledgeNode[] = concepts.map((c: any, i: number) => ({
+      id: 'c_' + i,
+      name: c.name,
+      x: 100 + Math.random() * 400,
+      y: 100 + Math.random() * 300,
+      symbolSize: 60,
+      color: nodeTypes.value.find(t => t.value === 'concept')!.color,
+      desc: c.description || '',
+      type: 'concept',
+    }))
+    const resourceNodes: KnowledgeNode[] = resources.map((r: Resource) => ({
+      id: 'r_' + r.id,
+      name: r.title,
+      x: 100 + Math.random() * 400,
+      y: 100 + Math.random() * 300,
+      symbolSize: 50,
+      color: nodeTypes.value.find(t => t.value === 'resource')!.color,
+      desc: `${r.filename}（${r.course} 第${r.chapter}章）`,
+      type: 'resource',
+      resourceId: r.id,
+    }))
+    nodes.value = [...conceptNodes, ...resourceNodes]
+    links.value = relations.map((r: any) => ({
+      source: conceptNodes.find(n => n.name === r.start_node)?.id || '',
+      target: conceptNodes.find(n => n.name === r.end_node)?.id || '',
+    }))
+    updateChart()
+  } catch (e: any) {
+    ElMessage.error('加载图谱失败：' + e.message)
+  }
+}
+
+/* ========== 12. 首次挂载 ========== */
+onMounted(() => {
+  loadGraph()
+  window.addEventListener('resize', () => chart?.resize())
 })
+
+/* ========== 13. 筛选监听 ========== */
+watch([selectedNodeTypes, nodeSearch], () => updateChart())
 </script>
 
 <style scoped>
+/* 样式保持你原有 */
 .knowledge-page {
   display: flex;
   height: 100vh;
   background: #f5f7fa;
 }
-
 .graph-box {
   flex: 1;
   position: relative;
@@ -562,12 +554,10 @@ onMounted(() => {
   background: #fff;
   border-right: 1px solid #e4e7ed;
 }
-
 .graph {
   width: 100%;
   height: 100%;
 }
-
 .toolbar {
   position: absolute;
   top: 20px;
@@ -576,7 +566,6 @@ onMounted(() => {
   display: flex;
   gap: 10px;
 }
-
 .res-box {
   width: 320px;
   padding: 16px;
@@ -585,27 +574,22 @@ onMounted(() => {
   flex-direction: column;
   gap: 16px;
 }
-
 .filter-panel {
   padding: 12px;
   background: #f8f9fa;
   border-radius: 4px;
 }
-
 .filter-panel h4 {
   margin: 0 0 10px 0;
   color: #333;
 }
-
 .node-list {
   flex: 1;
 }
-
 .node-list h4 {
   margin: 0 0 10px 0;
   color: #333;
 }
-
 .node-item {
   display: flex;
   align-items: center;
@@ -616,50 +600,40 @@ onMounted(() => {
   cursor: pointer;
   transition: all 0.3s;
 }
-
 .node-item:hover {
   background-color: #f5f7fa;
 }
-
 .node-item.selected {
   border-color: #409eff;
   background-color: #ecf5ff;
 }
-
 .node-color {
   width: 12px;
   height: 12px;
   border-radius: 50%;
   margin-right: 8px;
 }
-
 .node-info {
   flex: 1;
 }
-
 .node-name {
   font-weight: 500;
   font-size: 14px;
 }
-
 .node-type {
   font-size: 12px;
   color: #909399;
 }
-
 .node-actions {
   opacity: 0;
   transition: opacity 0.3s;
 }
-
 .node-item:hover .node-actions {
   opacity: 1;
 }
-
 .upload {
   margin-bottom: 0;
 }
-
 .hist-btn {
   align-self: flex-end;
 }

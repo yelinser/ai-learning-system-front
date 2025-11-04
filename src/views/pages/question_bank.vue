@@ -12,7 +12,7 @@
       <el-col :span="12">
         <div class="pane">
           <div class="pane-title">题库</div>
-          <el-table :data="questions" row-key="id" height="460">
+          <el-table :data="questions" row-key="id" height="460" v-loading="loading">
             <el-table-column label="题型" width="70">
               <template #default="{ row }">
                 <el-tag size="small">{{ row.type }}</el-tag>
@@ -49,7 +49,7 @@
               <div class="sel-box">
                 <div v-for="q in selected" :key="q.id" class="sel-item">
                   <span>{{ q.title }}</span>
-                  <el-icon @click="toggleSelect(q)"><close /></el-icon>
+                  <el-icon @click="toggleSelect(q)"><Close /></el-icon>
                 </div>
                 <el-button text @click="autoSelect">自动选题</el-button>
               </div>
@@ -64,7 +64,7 @@
             <el-descriptions-item label="总数">{{ selected.length }}</el-descriptions-item>
             <el-descriptions-item label="平均难度">{{ avgDiff.toFixed(1) }}</el-descriptions-item>
           </el-descriptions>
-          
+
           <div class="pane-title" style="margin-top: 16px">难度分布</div>
           <v-chart class="chart" :option="diffOption" />
         </div>
@@ -126,13 +126,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, nextTick } from 'vue'
+import { ref, reactive, computed, nextTick, onMounted } from 'vue'
 import { Close } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import type { ECBasicOption } from 'echarts/types/dist/shared'
+import axios from 'axios'
 import VChart from 'vue-echarts'
+import type { ECBasicOption } from 'echarts/types/dist/shared'
 
-// ---------- 数据 ----------
+const BASE = 'http://patrickshao.site:8000'
+
+// ---------- 接口封装 ----------
+const api = axios.create({ baseURL: BASE })
+
+// ---------- 数据结构 ----------
 interface Question {
   id: string
   title: string
@@ -142,50 +148,118 @@ interface Question {
   difficulty: number
   knowTags: string[]
 }
-const questions = ref<Question[]>([
-  {
-    id: 'q1',
-    title: '下列哪项是单选典型特征？',
-    type: '单选',
-    options: [
-      { text: '只有一个正确答案', correct: true },
-      { text: '可以多个答案', correct: false },
-    ],
-    analysis: '单选定义',
-    difficulty: 2,
-    knowTags: ['函数'],
-  },
-  {
-    id: 'q2',
-    title: 'Python 中如何交换两个变量？',
-    type: '编程',
-    analysis: 'a, b = b, a',
-    difficulty: 3,
-    knowTags: ['代数'],
-  },
-])
 
+const questions = ref<Question[]>([])
 const selected = ref<Question[]>([])
-const paperForm = reactive({ title: '', duration: 45 })
+const loading = ref(false)
 const showEdit = ref(false)
 const editId = ref<string | null>(null)
+const resourceId = ref<string>('') // ✅ 自动从接口获取
+const paperForm = reactive({ title: '', duration: 45 })
 
-// ---------- 难度分布 ----------
-const diffOption = computed<ECBasicOption>(() => ({
-  tooltip: {},
-  xAxis: { type: 'category', data: ['1', '2', '3', '4', '5'] },
-  yAxis: { type: 'value' },
-  series: [
-    {
-      type: 'bar',
-      name: '数量',
-      data: [1, 2, 3, 2, 1].map((v, i) => ({
-        value: questions.value.filter(q => Math.ceil(q.difficulty) === i + 1).length,
-      })),
-      itemStyle: { color: '#2d8cf0' },
-    },
-  ],
-}))
+// ---------- 所有资源ID ----------
+const resourceIds = ref<string[]>([]) // 存储所有资源ID
+
+// ---------- 获取所有资源ID ----------
+async function loadAllResourceIds() {
+  try {
+    const { data } = await api.get('/api/v1/resources')
+    console.log('资源列表:', data)
+
+    if (Array.isArray(data) && data.length > 0) {
+      resourceIds.value = data.map(item => item.id)
+      console.log('所有资源ID:', resourceIds.value)
+    } else {
+      ElMessage.warning('未找到可用资源')
+      resourceIds.value = []
+    }
+  } catch (err) {
+    console.error('获取资源列表失败:', err)
+    ElMessage.error('加载资源失败')
+    resourceIds.value = []
+  }
+}
+
+// ---------- 加载所有资源题目 ----------
+async function loadAllQuestions() {
+  if (!resourceIds.value.length) return
+  loading.value = true
+  try {
+    const allQuestions: Question[] = []
+
+    for (const rid of resourceIds.value) {
+      const res = await api.get(`/api/question_bank/questions/${rid}/all`)
+      const data = res.data[0]?.questions || []
+
+      const mapped = data.map((q: any) => {
+        // 类型映射
+        let type: '单选' | '多选' | '编程' = '单选'
+        if (q.type === 'single_choice') type = '单选'
+        else if (q.type === 'multiple_choice') type = '多选'
+        else if (q.type === 'programming') type = '编程'
+
+        // 选项映射
+        const options = q.options?.map((opt: any) => ({
+          text: opt.content,
+          correct: type === '编程'
+            ? false
+            : (q.correct_answers || [q.correct_answer]).includes(opt.key)
+        })) || []
+
+        return {
+          id: q.id,
+          title: q.content || '未命名题目',
+          type,
+          options,
+          analysis: q.explanation || '',
+          difficulty: q.difficulty || 2,
+          knowTags: q.concept ? [q.concept] : []
+        }
+      })
+
+      allQuestions.push(...mapped)
+    }
+
+    questions.value = allQuestions
+  } catch (e: any) {
+    console.error(e)
+    ElMessage.error('加载题目失败: ' + (e.message || '未知错误'))
+    questions.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
+// ---------- 初始化加载 ----------
+onMounted(async () => {
+  await loadAllResourceIds()
+  await loadAllQuestions()
+})
+
+// ---------- 删除题目 ----------
+async function delQuestion(q: Question) {
+  try {
+    await api.delete(`/api/question_bank/questions/${q.id}`)
+    ElMessage.success('已删除')
+    loadAllQuestions()
+  } catch {
+    ElMessage.error('删除失败')
+  }
+}
+
+// ---------- 保存题目 ----------
+async function saveQuestion() {
+  showEdit.value = false
+  ElMessage.success(editId.value ? '已更新' : '已新增')
+  resetForm()
+  loadAllQuestions()
+}
+
+function editQuestion(q: Question) {
+  editId.value = q.id
+  Object.assign(qForm, JSON.parse(JSON.stringify(q)))
+  showEdit.value = true
+}
 
 // ---------- 表单 ----------
 const qForm = reactive<Question>({
@@ -197,35 +271,11 @@ const qForm = reactive<Question>({
   difficulty: 2,
   knowTags: [],
 })
+
 const inputVisible = ref(false)
 const inputValue = ref('')
 const tagInputRef = ref()
 
-// ---------- 业务函数 ----------
-function addOption() {
-  qForm.options!.push({ text: '', correct: false })
-}
-function saveQuestion() {
-  const q: Question = { ...qForm, id: editId.value || `q${Date.now()}` }
-  if (editId.value) {
-    const i = questions.value.findIndex(v => v.id === editId.value)
-    if (i > -1) questions.value[i] = q
-  } else {
-    questions.value.push(q)
-  }
-  showEdit.value = false
-  resetForm()
-  ElMessage.success('已保存')
-}
-function delQuestion(q: Question) {
-  questions.value = questions.value.filter(v => v.id !== q.id)
-  ElMessage.success('已删除')
-}
-function editQuestion(q: Question) {
-  editId.value = q.id
-  Object.assign(qForm, JSON.parse(JSON.stringify(q)))
-  showEdit.value = true
-}
 function resetForm() {
   Object.assign(qForm, {
     id: '',
@@ -238,25 +288,9 @@ function resetForm() {
   })
   editId.value = null
 }
-
-// ---------- 组卷 ----------
-function autoSelect() {
-  const pick = questions.value
-    .filter(q => q.difficulty <= 3)
-    .sort(() => 0.5 - Math.random())
-    .slice(0, 5)
-  selected.value = pick
+function addOption() {
+  qForm.options!.push({ text: '', correct: false })
 }
-function toggleSelect(q: Question) {
-  const idx = selected.value.findIndex(v => v.id === q.id)
-  idx > -1 ? selected.value.splice(idx, 1) : selected.value.push(q)
-}
-function publishPaper() {
-  if (!selected.value.length) return ElMessage.warning('请先选题目')
-  ElMessage.success('测验已发布！')
-}
-
-// ---------- 标签输入 ----------
 function showTagInput() {
   inputVisible.value = true
   nextTick(() => tagInputRef.value.focus())
@@ -269,27 +303,70 @@ function handleInputConfirm() {
   inputValue.value = ''
 }
 
-// ---------- 统计 ----------
+// ---------- 组卷 ----------
+function toggleSelect(q: Question) {
+  const idx = selected.value.findIndex(v => v.id === q.id)
+  idx > -1 ? selected.value.splice(idx, 1) : selected.value.push(q)
+}
+
+function autoSelect() {
+  const pick = questions.value
+    .filter(q => q.difficulty <= 3)
+    .sort(() => 0.5 - Math.random())
+    .slice(0, 5)
+  selected.value = pick
+}
+
+async function generatePaper() {
+  if (!resourceId.value) return ElMessage.warning('缺少资源ID')
+  try {
+    const { data } = await api.post(`/api/question_bank/questions/${resourceId.value}/generate`)
+    selected.value = data?.questions || []
+    ElMessage.success('已自动组卷')
+  } catch {
+    ElMessage.error('组卷失败')
+  }
+}
+
+function publishPaper() {
+  if (!selected.value.length) return ElMessage.warning('请先选题目')
+  ElMessage.success('测验已发布！')
+}
+
+// ---------- 图表 ----------
+const diffOption = computed<ECBasicOption>(() => ({
+  tooltip: {},
+  xAxis: { type: 'category', data: ['1', '2', '3', '4', '5'] },
+  yAxis: { type: 'value' },
+  series: [
+    {
+      type: 'bar',
+      name: '数量',
+      data: [1, 2, 3, 4, 5].map((_, i) => ({
+        value: questions.value.filter(q => Math.ceil(q.difficulty) === i + 1).length,
+      })),
+      itemStyle: { color: '#2d8cf0' },
+    },
+  ],
+}))
+
 const avgDiff = computed(() => {
   if (!selected.value.length) return 0
   return selected.value.reduce((s, q) => s + q.difficulty, 0) / selected.value.length
 })
 
-// 新增题目
+// ✅ 初始化时加载资源 & 题目
+
 function addQuestion() {
   resetForm()
   editId.value = null
   showEdit.value = true
 }
 
-// 组卷发布
-function generatePaper() {
-  if (!selected.value.length) {
-    ElMessage.warning('请先选择题目')
-    return
-  }
-  ElMessage.success(`已生成 ${selected.value.length} 题的测验卷`)
-}
+console.log('资源ID:', resourceId.value)
+
+
+
 </script>
 
 <style scoped>

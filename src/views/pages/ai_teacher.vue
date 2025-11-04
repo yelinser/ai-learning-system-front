@@ -1,47 +1,112 @@
 <template>
-    <div class="chat-container">
-        <div class="messages">
-            <div
-                v-for="(msg, idx) in messages"
-                :key="idx"
-                :class="['message', msg.role, { 
-                    failed: msg.status === 'failed',
-                    streaming: msg.status === 'streaming' 
-                }]"
-            >
-                <template v-if="msg.status === 'failed'">
-                    <button 
-                        class="el-icon-lx-refresh retry-btn" 
-                        @click="retryMessage(idx)"
-                        title="重发"
-                    >↻</button>
-                </template>
-                <div class="bubble">
-                    <!-- 流式消息显示加载动画 -->
-                    <span v-if="msg.status === 'streaming'" class="streaming-indicator">●</span>
-                    <span>{{ msg.content }}</span>
+    <div class="chat-layout">
+        <!-- 侧边栏 -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h3>聊天会话</h3>
+                <button class="new-session-btn" @click="createNewSession">
+                    <span>+ 新会话</span>
+                </button>
+            </div>
+            
+            <div class="sessions-list">
+                <div 
+                    v-for="session in sessions" 
+                    :key="session.id"
+                    :class="['session-item', { active: currentSessionId === session.id }]"
+                    @click="selectSession(session.id)"
+                >
+                    <div class="session-title">
+                        {{ session.title || '新会话' }}
+                    </div>
+                    <div class="session-meta">
+                        <span class="session-time">{{ formatSessionTime(session.updated_at) }}</span>
+                        <button class="delete-session-btn" @click.stop="deleteSession(session.id)" title="删除会话">
+                            ×
+                        </button>
+                    </div>
+                </div>
+                
+                <div v-if="sessions.length === 0" class="no-sessions">
+                    <p>还没有会话，创建一个新的开始聊天吧！</p>
                 </div>
             </div>
-            <div v-if="loading && !isStreaming" class="message ai">
-                <div class="bubble loading">AI正在思考...</div>
-            </div>
         </div>
-        <div class="input-area highlight-input large-input-area">
-            <textarea
-                v-model="input"
-                @keydown="handleEnter"
-                placeholder="请输入您的问题"
-                rows="4"
-            ></textarea>
-            <button @click="sendMessage" :disabled="loading || !input.trim()">
-                {{ loading ? (isStreaming ? 'AI正在输入...' : '发送中...') : '发送' }}
-            </button>
+
+        <!-- 主聊天区域 -->
+        <div class="chat-container">
+            <div class="chat-header">
+                <h3>{{ currentSessionTitle }}</h3>
+                <div class="session-info">
+                    <span v-if="!currentSessionId">新会话 - 输入第一条消息后创建</span>
+                </div>
+            </div>
+
+            <div class="messages" ref="messagesContainer">
+                <div
+                    v-for="(msg, idx) in messages"
+                    :key="idx"
+                    :class="['message', msg.role, { 
+                        failed: msg.status === 'failed',
+                        streaming: msg.status === 'streaming' 
+                    }]"
+                >
+                    <template v-if="msg.status === 'failed'">
+                        <button 
+                            class="el-icon-lx-refresh retry-btn" 
+                            @click="retryMessage(idx)"
+                            title="重发"
+                        >↻</button>
+                    </template>
+                    <div class="bubble">
+                        <!-- 流式消息显示加载动画 -->
+                        <span v-if="msg.status === 'streaming'" class="streaming-indicator">●</span>
+                        <span v-html="formatMessageContent(msg.content)"></span>
+                    </div>
+                    <div class="timestamp">{{ formatTime(msg.timestamp) }}</div>
+                </div>
+                <div v-if="loading && !isStreaming" class="message ai">
+                    <div class="bubble loading">AI正在思考...</div>
+                </div>
+            </div>
+            
+            <div class="input-area highlight-input large-input-area">
+                <textarea
+                    v-model="input"
+                    @keydown="handleEnter"
+                    placeholder="请输入您的问题"
+                    rows="4"
+                ></textarea>
+                <button 
+                    @click="sendMessage" 
+                    :disabled="loading || !input.trim()"
+                >
+                    {{ loading ? (isStreaming ? 'AI正在输入...' : '发送中...') : '发送' }}
+                </button>
+                <button 
+                    v-if="isStreaming" 
+                    @click="cancelStream" 
+                    class="cancel-btn"
+                >
+                    停止
+                </button>
+            </div>
         </div>
     </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, nextTick, watch, computed } from 'vue'
+import { 
+    sendStreamMessage as apiSendStreamMessage,
+    createChatSession,
+    getChatSession,
+    deleteChatSession,
+    getUserSessions,
+    type SendMessageParams,
+    type ChatSession,
+    type SessionListItem
+} from '@/api/chat'
 
 // 定义类型
 interface ChatMessage {
@@ -51,35 +116,51 @@ interface ChatMessage {
     timestamp?: number
 }
 
-interface StreamChatRequest {
-    session_id: string
-    message: string
-    context: Record<string, any>
-}
-
-interface ErrorResponse {
-    detail: Array<{
-        loc: (string | number)[]
-        msg: string
-        type: string
-    }>
+interface UserInfo {
+    id: string;
+    username: string;
+    role: string;
+    name: string;
+    email: string;
+    phone: string;
+    created_time: string;
+    updated_time: string;
+    is_active: boolean;
+    last_login: string | null;
 }
 
 // 响应式数据
 const input = ref<string>('')
 const messages = ref<ChatMessage[]>([])
 const loading = ref<boolean>(false)
-const sessionId = ref<string>('')
+const currentSessionId = ref<string>('') // 空字符串表示新会话
 const userId = ref<string>('')
 const isStreaming = ref<boolean>(false)
-const currentStreamIndex = ref<number>(-1) // 当前流式消息的索引
-const abortController = ref<AbortController | null>(null)
+const sessions = ref<SessionListItem[]>([])
+const abortController = ref<{ abort: () => void } | null>(null)
+const messagesContainer = ref<HTMLElement>()
 
 // 计算属性
-const isStreamingActive = computed(() => 
-    currentStreamIndex.value >= 0 && 
-    messages.value[currentStreamIndex.value]?.status === 'streaming'
-)
+const currentSessionTitle = computed(() => {
+    if (!currentSessionId.value) {
+        return '新会话'
+    }
+    const session = sessions.value.find(s => s.id === currentSessionId.value)
+    return session?.title || '新会话'
+})
+
+// 从localStorage获取用户信息
+const getUserInfoFromStorage = (): UserInfo | null => {
+    try {
+        const userInfoStr = localStorage.getItem('user_info')
+        if (userInfoStr) {
+            return JSON.parse(userInfoStr) as UserInfo
+        }
+    } catch (error) {
+        console.error('解析用户信息失败:', error)
+    }
+    return null
+}
 
 // 存储工具函数
 const storage = {
@@ -106,73 +187,146 @@ const storage = {
     }
 }
 
-// 生成或获取用户ID
-const getOrCreateUserId = (): string => {
-    let existingId = storage.get<string>('ai_chat_user_id')
-    if (!existingId) {
-        // 生成唯一用户ID
-        existingId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9)
-        storage.set('ai_chat_user_id', existingId)
-    }
-    return existingId
-}
-
-// 生成或获取会话ID
-const getOrCreateSessionId = async (): Promise<string> => {
-    let existingId = storage.get<string>('ai_chat_session_id')
-    
-    if (existingId) {
-        return existingId
-    }
-    
+// 加载用户会话列表
+const loadUserSessions = async (): Promise<void> => {
     try {
-        // 调用后端接口创建新会话
-        const response = await fetch('http://patrickshao.site:8000/api/v1/chat/sessions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({})
-        })
-        console.log("后端会话id："+ response)
-        
-        if (!response.ok) {
-            throw new Error(`创建会话失败: ${response.status}`)
+        const userInfo = getUserInfoFromStorage()
+        if (!userInfo || !userInfo.id) {
+            console.error('未找到用户信息')
+            return
         }
         
-        const data = await response.json()
-        const newSessionId = data.session_id
+        userId.value = userInfo.id
+        const response = await getUserSessions(userId.value)
         
-        // 保存到本地存储
-        storage.set('ai_chat_session_id', newSessionId)
-        return newSessionId
+        if (response.sessions) {
+            sessions.value = response.sessions
+            if (sessions.value.length > 0 && !currentSessionId.value) {
+                // 选择最新的会话
+                currentSessionId.value = sessions.value[0].id
+                await loadSessionMessages(currentSessionId.value)
+            }
+        }
     } catch (error) {
-        console.error('创建会话失败:', error)
-        // 如果后端创建失败，使用本地生成的会话ID作为fallback
-        //const fallbackId = 'local_session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9)
-        //storage.set('ai_chat_session_id', fallbackId)
-        return '' // 返回空字符串表示失败
+        console.error('加载会话列表失败:', error)
     }
 }
 
-// 加载历史消息
-const loadHistoryMessages = (): void => {
-    const history = storage.get<ChatMessage[]>(`chat_history_${sessionId.value}`)
-    if (history && Array.isArray(history)) {
-        messages.value = history
+// 加载会话消息
+const loadSessionMessages = async (sessionId: string): Promise<void> => {
+    try {
+        const response = await getChatSession(sessionId)
+        if (response.messages) {
+            // 转换后端消息格式到前端格式
+            messages.value = response.messages.map(msg => ({
+                role: msg.role === 'user' ? 'user' : 'ai',
+                content: msg.content,
+                status: 'success' as const,
+                timestamp: new Date(msg.timestamp).getTime()
+            }))
+            scrollToBottom()
+        }
+    } catch (error) {
+        console.error('加载消息失败:', error)
     }
 }
 
-// 保存消息到历史记录
-const saveMessagesToHistory = (): void => {
-    storage.set(`chat_history_${sessionId.value}`, messages.value)
+// 创建新会话（仅重置状态，不发送请求）
+const createNewSession = (): void => {
+    if (isStreaming.value) {
+        cancelStream()
+    }
+    
+    // 重置为新建会话状态
+    currentSessionId.value = ''
+    messages.value = []
+    input.value = ''
+}
+
+// 实际创建会话的API调用
+const createSessionApi = async (): Promise<string> => {
+    const userInfo = getUserInfoFromStorage()
+    if (!userInfo || !userInfo.id) {
+        throw new Error('未找到用户信息')
+    }
+
+    const response = await createChatSession(userInfo.id)
+    if (response.session_id) {
+        return response.session_id
+    } else {
+        throw new Error('创建会话失败')
+    }
+}
+
+// 选择会话
+const selectSession = async (sessionId: string): Promise<void> => {
+    if (isStreaming.value) {
+        cancelStream()
+    }
+    
+    currentSessionId.value = sessionId
+    await loadSessionMessages(sessionId)
+}
+
+// 删除会话
+const deleteSession = async (sessionId: string): Promise<void> => {
+    if (confirm('确定要删除这个会话吗？')) {
+        try {
+            await deleteChatSession(sessionId)
+            sessions.value = sessions.value.filter(s => s.id !== sessionId)
+            
+            if (currentSessionId.value === sessionId) {
+                if (sessions.value.length > 0) {
+                    currentSessionId.value = sessions.value[0].id
+                    await loadSessionMessages(currentSessionId.value)
+                } else {
+                    // 没有会话了，重置为新会话状态
+                    currentSessionId.value = ''
+                    messages.value = []
+                }
+            }
+        } catch (error) {
+            console.error('删除会话失败:', error)
+        }
+    }
 }
 
 // 流式发送消息
-const sendStreamMessage = async (): Promise<void> => {
+const sendMessage = async (): Promise<void> => {
     const content = input.value.trim()
     if (!content || loading.value) return
     
+    const userInfo = getUserInfoFromStorage()
+    if (!userInfo || !userInfo.id) {
+        console.error('未找到用户信息')
+        return
+    }
+
+    // 如果是新会话，先创建会话
+    let targetSessionId = currentSessionId.value
+    if (!targetSessionId) {
+        try {
+            loading.value = true
+            targetSessionId = await createSessionApi()
+            currentSessionId.value = targetSessionId
+            
+            // 创建新的会话项并添加到列表
+            const newSession: SessionListItem = {
+                id: targetSessionId,
+                title: content.length > 20 ? content.substring(0, 20) + '...' : content,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            }
+            sessions.value.unshift(newSession)
+        } catch (error) {
+            console.error('创建会话失败:', error)
+            loading.value = false
+            return
+        } finally {
+            loading.value = false
+        }
+    }
+
     // 添加用户消息
     const userMsg: ChatMessage = {
         role: 'user',
@@ -188,130 +342,82 @@ const sendStreamMessage = async (): Promise<void> => {
     // 预先添加一个空的AI消息，用于逐步填充内容
     messages.value.push({
         role: 'ai',
-        content: '', // 初始为空
+        content: '',
         status: 'streaming',
         timestamp: Date.now()
     })
     
-    currentStreamIndex.value = messages.value.length - 1
-    
+    const aiMessageIndex = messages.value.length - 1
+    scrollToBottom()
+
     try {
-        // 构建请求数据
-        const requestData: StreamChatRequest = {
-            session_id: sessionId.value,
+        const params: SendMessageParams = {
+            session_id: targetSessionId,
             message: content,
-            context: {} // 根据您的需求可以传递上下文信息
+            user_id: userInfo.id,
+            context: {}
         }
-        
-        // 创建AbortController以便可以取消请求
-        abortController.value = new AbortController()
-        
-        // 发送流式请求
-        const response = await fetch('http://patrickshao.site:8000/api/v1/chat/message-stream', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'text/event-stream', // 重要：接受流式响应
+
+        abortController.value = await apiSendStreamMessage(params, {
+            onMessage: (content: string) => {
+    const currentContent = messages.value[aiMessageIndex].content;
+    
+    // 添加调试日志
+    console.log('收到数据块:', {
+        新块长度: content.length,
+        新块前20字符: content.substring(0, 20) + '...',
+        当前内容长度: currentContent.length,
+        当前内容结尾: currentContent.substring(Math.max(0, currentContent.length - 20)),
+        是否包含: currentContent.includes(content)
+    });
+    
+    // if (!currentContent.includes(content)) {
+        messages.value[aiMessageIndex].content += content;
+        messages.value[aiMessageIndex].timestamp = Date.now();
+        scrollToBottom();
+    // } else {
+    //     console.log('跳过重复内容');
+    // }
             },
-            body: JSON.stringify(requestData),
-            signal: abortController.value.signal
-        })
-        console.log(response)
-
-        if (!response.ok) {
-            throw new Error(`请求失败: ${response.status}`)
-        }
-
-        if (!response.body) {
-            throw new Error('响应体为空')
-        }
-
-        const reader = response.body.getReader()
-        const decoder = new TextDecoder()
-        let buffer = ''
-
-        try {
-            while (true) {
-                const { done, value } = await reader.read()
+            onError: (error) => {
+                console.error('流式消息错误:', error)
+                messages.value[aiMessageIndex].status = 'failed'
+                messages.value[aiMessageIndex].content += `\n[错误: ${error.message || '未知错误'}]`
+                loading.value = false
+                isStreaming.value = false
+            },
+            onComplete: () => {
+                messages.value[aiMessageIndex].status = 'success'
+                loading.value = false
+                isStreaming.value = false
                 
-                if (done) {
-                    // 流结束
-                    if (currentStreamIndex.value >= 0) {
-                        messages.value[currentStreamIndex.value].status = 'success'
-                        currentStreamIndex.value = -1
-                        loading.value = false
-                        isStreaming.value = false
-                        
-                        // 保存到历史记录
-                        saveMessagesToHistory()
-                    }
-                    break
+                // 如果是第一条消息，更新会话标题
+                if (messages.value.length === 2) { // 用户消息 + AI消息
+                    updateSessionTitle(content)
                 }
-
-                // 解码并处理数据块
-                buffer += decoder.decode(value, { stream: true })
-                const lines = buffer.split('\n')
-                buffer = lines.pop() || '' // 最后一个可能是不完整的行
-
-                for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                        try {
-                            const data = line.slice(6) // 移除 'data: ' 前缀
-                            if (data === '[DONE]') {
-                                // 流结束标记
-                                if (currentStreamIndex.value >= 0) {
-                                    messages.value[currentStreamIndex.value].status = 'success'
-                                    currentStreamIndex.value = -1
-                                    loading.value = false
-                                    isStreaming.value = false
-                                    saveMessagesToHistory()
-                                }
-                                return
-                            }
-                            
-                            // 处理流式数据块
-                            if (currentStreamIndex.value >= 0) {
-                                messages.value[currentStreamIndex.value].content += data
-                            }
-                        } catch (e) {
-                            console.warn('解析流数据失败:', e, line)
-                        }
-                    }
-                }
+                
+                // 刷新会话列表以获取最新更新时间
+                loadUserSessions()
             }
-        } finally {
-            reader.releaseLock()
-        }
+        })
         
-    } catch (error: any) {
+    } catch (error) {
         console.error('发送消息失败:', error)
-        
-        // 用户消息发送失败
-        const lastMsgIndex = messages.value.length - 1
-        if (lastMsgIndex >= 0) {
-            if (currentStreamIndex.value >= 0) {
-                // 流式消息失败
-                messages.value[currentStreamIndex.value].status = 'failed'
-                messages.value[currentStreamIndex.value].content += `\n[错误: ${error.message || '未知错误'}]`
-                currentStreamIndex.value = -1
-            } else {
-                // 普通消息失败
-                messages.value[lastMsgIndex].status = 'failed'
-            }
-            saveMessagesToHistory()
-        }
-        
-        // 显示错误信息
-        if (error.name !== 'AbortError') {
-            // 如果不是用户取消的请求，显示错误
-            console.error('发送消息失败:', error)
-        }
-    } finally {
-        if (abortController.value) {
-            abortController.value = null
-        }
+        messages.value[aiMessageIndex].status = 'failed'
+        messages.value[aiMessageIndex].content = '发送消息失败，请检查网络连接。'
         loading.value = false
         isStreaming.value = false
+    }
+}
+
+// 更新会话标题
+const updateSessionTitle = (firstMessage: string): void => {
+    const session = sessions.value.find(s => s.id === currentSessionId.value)
+    if (session) {
+        // 截取前20个字符作为标题
+        session.title = firstMessage.length > 20 
+            ? firstMessage.substring(0, 20) + '...' 
+            : firstMessage
     }
 }
 
@@ -321,23 +427,14 @@ const cancelStream = (): void => {
         abortController.value.abort()
         abortController.value = null
     }
-    if (currentStreamIndex.value >= 0) {
-        messages.value[currentStreamIndex.value].status = 'success' // 或 'failed'，根据需求
-        currentStreamIndex.value = -1
-    }
     loading.value = false
     isStreaming.value = false
-}
-
-// 发送消息 - 使用流式接口
-const sendMessage = async (): Promise<void> => {
-    // 如果正在流式传输，取消当前请求
-    if (isStreaming.value) {
-        cancelStream()
-        return
-    }
     
-    await sendStreamMessage()
+    // 将当前流式消息状态改为成功
+    const streamingMessage = messages.value.find(msg => msg.status === 'streaming')
+    if (streamingMessage) {
+        streamingMessage.status = 'success'
+    }
 }
 
 // 重试消息
@@ -346,7 +443,7 @@ const retryMessage = async (idx: number): Promise<void> => {
     if (msg.role !== 'user') return
     
     // 移除该用户消息之后的所有消息（包括AI回复）
-    messages.value = messages.value.slice(0, idx + 1)
+    messages.value = messages.value.slice(0, idx)
     input.value = msg.content
     await sendMessage()
 }
@@ -359,32 +456,53 @@ const handleEnter = (event: KeyboardEvent): void => {
     }
 }
 
+// 格式化消息内容（支持简单的Markdown）
+const formatMessageContent = (content: string): string => {
+    // 简单的换行处理
+    return content
+        .replace(/\n/g, '<br>')
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+        .replace(/`(.*?)`/g, '<code>$1</code>')
+}
+
+// 格式化时间
+const formatTime = (timestamp?: number): string => {
+    if (!timestamp) return ''
+    return new Date(timestamp).toLocaleTimeString('zh-CN', {
+        hour: '2-digit',
+        minute: '2-digit'
+    })
+}
+
+// 格式化会话时间
+const formatSessionTime = (timestamp: string): string => {
+    const date = new Date(timestamp)
+    const now = new Date()
+    const diff = now.getTime() - date.getTime()
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+    
+    if (days === 0) {
+        return '今天'
+    } else if (days === 1) {
+        return '昨天'
+    } else if (days < 7) {
+        return `${days}天前`
+    } else {
+        return date.toLocaleDateString('zh-CN')
+    }
+}
+
 // 组件挂载时初始化
 onMounted(async () => {
-    try {
-        //storage.remove('ai_chat_session_id')  // 测试期间每次都创建新会话
-        // 获取或创建用户ID
-        userId.value = getOrCreateUserId()
-        
-        // 异步获取或创建会话ID
-        sessionId.value = await getOrCreateSessionId()
-        
-        // 加载历史消息
-        loadHistoryMessages()
-        
-        console.log('当前用户ID:', userId.value)
-        console.log('当前会话ID:', sessionId.value)
-    } catch (error) {
-        console.error('初始化失败:', error)
-    }
+    await loadUserSessions()
 })
 
-// 监听消息变化，自动滚动到底部
+// 滚动到底部
 const scrollToBottom = (): void => {
     nextTick(() => {
-        const messagesContainer = document.querySelector('.messages')
-        if (messagesContainer) {
-            messagesContainer.scrollTop = messagesContainer.scrollHeight
+        if (messagesContainer.value) {
+            messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
         }
     })
 }
@@ -397,21 +515,140 @@ watch(messages, () => {
 </script>
 
 <style scoped>
-.chat-container {
+.chat-layout {
     display: flex;
-    flex-direction: column;
     height: 100%;
     background: #f5f5f5;
-    padding: 16px;
 }
+
+/* 侧边栏样式 */
+.sidebar {
+    width: 300px;
+    background: white;
+    border-right: 1px solid #e0e0e0;
+    display: flex;
+    flex-direction: column;
+}
+
+.sidebar-header {
+    padding: 20px;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.sidebar-header h3 {
+    margin: 0 0 15px 0;
+    font-size: 18px;
+    color: #333;
+}
+
+.new-session-btn {
+    width: 100%;
+    padding: 10px;
+    background: #4caf50;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.3s;
+}
+
+.new-session-btn:hover {
+    background: #45a049;
+}
+
+.sessions-list {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.session-item {
+    padding: 15px 20px;
+    border-bottom: 1px solid #f0f0f0;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.session-item:hover {
+    background: #f8f9fa;
+}
+
+.session-item.active {
+    background: #e3f2fd;
+    border-left: 3px solid #2196f3;
+}
+
+.session-title {
+    font-weight: 500;
+    margin-bottom: 5px;
+    color: #333;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.session-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    color: #666;
+}
+
+.delete-session-btn {
+    background: none;
+    border: none;
+    color: #999;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 2px 6px;
+    border-radius: 50%;
+}
+
+.delete-session-btn:hover {
+    background: #ffebee;
+    color: #f44336;
+}
+
+.no-sessions {
+    padding: 40px 20px;
+    text-align: center;
+    color: #999;
+}
+
+/* 主聊天区域样式 */
+.chat-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: white;
+}
+
+.chat-header {
+    padding: 15px 20px;
+    border-bottom: 1px solid #e0e0e0;
+    background: #fafafa;
+}
+
+.chat-header h3 {
+    margin: 0 0 5px 0;
+    color: #333;
+}
+
+.session-info {
+    font-size: 12px;
+    color: #666;
+}
+
 .messages {
     flex: 1;
     overflow-y: auto;
-    margin-bottom: 12px;
+    padding: 20px;
+    background: #fafafa;
 }
 .message {
     display: flex;
-    margin-bottom: 10px;
+    margin-bottom: 15px;
 }
 .message.user {
     justify-content: flex-end;
@@ -421,13 +658,13 @@ watch(messages, () => {
 }
 .bubble {
     max-width: 70%;
-    padding: 10px 16px;
+    padding: 12px 16px;
     border-radius: 18px;
-    font-size: 15px;
+    font-size: 14px;
+    line-height: 1.4;
     position: relative;
     background: #fff;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-    white-space: pre-wrap; /* 保留空白符，包括换行 */
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
     word-wrap: break-word;
 }
 .message.user .bubble {
@@ -443,39 +680,55 @@ watch(messages, () => {
 .message.failed .bubble {
     background: #ffeaea;
     color: #d93025;
-    border: 1px solid #d93025;
+    border: 1px solid #ffcdd2;
 }
 .message.streaming .bubble {
     border-left: 3px solid #4caf50;
 }
+
+.timestamp {
+    font-size: 11px;
+    color: #999;
+    margin-top: 4px;
+    text-align: right;
+}
+.message.ai .timestamp {
+    text-align: left;
+}
+
 .input-area {
     display: flex;
-    align-items: center;
-    gap: 8px;
-    position: relative;
+    align-items: flex-end;
+    gap: 10px;
+    padding: 20px;
+    background: white;
+    border-top: 1px solid #e0e0e0;
 }
 .input-area textarea {
-    flex: 6;
-    min-height: 100px;
+    flex: 1;
+    min-height: 80px;
     height: auto;
     resize: none;
     padding: 12px 16px;
-    border-radius: 20px;
-    border: 1px solid #ccc;
-    font-size: 16px;
-    box-sizing: border-box;
-    overflow-y: auto;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+    font-size: 14px;
     line-height: 1.5;
 }
+.input-area textarea:disabled {
+    background: #f5f5f5;
+    color: #999;
+}
 .input-area button {
-    padding: 8px 18px;
-    border-radius: 16px;
+    padding: 10px 20px;
+    border-radius: 8px;
     border: none;
     background: #4caf50;
     color: #fff;
-    font-size: 15px;
+    font-size: 14px;
     cursor: pointer;
     transition: background-color 0.3s;
+    white-space: nowrap;
 }
 .input-area button:disabled {
     background: #ccc;
@@ -484,10 +737,14 @@ watch(messages, () => {
 .input-area button:not(:disabled):hover {
     background: #45a049;
 }
-/* 当正在流式传输时，按钮样式变化 */
-.input-area button:disabled:not(.loading) {
-    background: #ff9800; /* 橙色表示可取消 */
+
+.cancel-btn {
+    background: #ff9800 !important;
 }
+.cancel-btn:hover {
+    background: #f57c00 !important;
+}
+
 .loading {
     color: #888;
     font-style: italic;
@@ -529,8 +786,13 @@ watch(messages, () => {
 
 /* 响应式设计 */
 @media (max-width: 768px) {
-    .chat-container {
-        padding: 10px;
+    .chat-layout {
+        flex-direction: column;
+    }
+    
+    .sidebar {
+        width: 100%;
+        height: 200px;
     }
     
     .bubble {
