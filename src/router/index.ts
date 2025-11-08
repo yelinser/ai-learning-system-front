@@ -177,7 +177,7 @@ const routes: RouteRecordRaw[] = [
                     title: '知识管理',
                     //permiss: 'teacher'
                 },
-                component: () => import('../views/pages/knowledge_base_manage.vue')
+                component: () => import('../views/pages/knowledge_graph_manage.vue')
             },
             {
                 path: 'upload',
