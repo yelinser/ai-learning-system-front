@@ -38,6 +38,15 @@ const route = useRoute();
 const router = useRouter();
 const activePath = ref(route.fullPath);
 const tabs = useTabsStore();
+
+// 获取标签标题
+const getTagTitle = (route: any) => {
+  // 对于 quiz 路由，优先使用查询参数中的 title
+  if (route.name === 'quiz') {
+    return route.query?.title || route.meta?.title || '测验';
+  }
+  return route.meta?.title || '未知页面';
+};
 // 设置标签
 const setTags = (route: any) => {
     // 判断是否为课程详情子页面，不添加标签
@@ -47,10 +56,11 @@ const setTags = (route: any) => {
     const isExist = tabs.list.some((item) => {
         return item.path === route.fullPath;
     });
+    const title = getTagTitle(route);
     if (!isExist) {
         tabs.setTabsItem({
             name: route.name,
-            title: route.meta.title,
+            title: title,
             path: route.fullPath,
         });
     }

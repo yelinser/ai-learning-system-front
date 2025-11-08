@@ -89,36 +89,36 @@ const routes: RouteRecordRaw[] = [
                     activeMenu: '/home_student/course_material',
                 },
             },  
-                    {
-                        path: 'notice',
-                        name: 'course_notice',
-                        meta: { title: '公告' },
-                        component: () => import('@/views/pages/course_pages/announcement.vue')
-                    },
-                    {
-                        path: 'material',
-                        name: 'course_material',
-                        meta: { title: '课件' },
-                        component: () => import('@/views/pages/course_pages/course_material.vue')
-                    },
-                    {
-                        path: 'set_test',
-                        name: 'set_test',
-                        meta: { title: '测试设置' },
-                        component: () => import('../views/pages/course_pages/set_test.vue')
-                    },
-                    {
-                        path: 'quiz',
-                        name: 'quiz',
-                        meta: { 
-                            title: '测试' ,
-                            activeMenu: '/home_student/set_test',
-                        },
-                        props: route => ({ 
-                            id: route.query.count 
-                        }),
-                        component: () => import('../views/pages/course_pages/quiz.vue')
-                    },
+            {
+                path: 'notice',
+                name: 'course_notice',
+                meta: { title: '公告' },
+                component: () => import('@/views/pages/course_pages/announcement.vue')
+            },
+            {
+                path: 'material',
+                name: 'course_material',
+                meta: { title: '课件' },
+                component: () => import('@/views/pages/course_pages/course_material.vue')
+            },
+            {
+                path: 'set_test',
+                name: 'set_test',
+                meta: { title: '测试设置' },
+                component: () => import('../views/pages/course_pages/set_test.vue')
+            },
+            {
+                path: 'quiz/:resourceId',
+                name: 'quiz',
+                meta: { 
+                    title: '测验',
+                    activeMenu: '/home_student/set_test',
+                },
+                props: route => ({ 
+                resourceId: route.params.resourceId
+                }),
+                component: () => import('../views/pages/course_pages/quiz.vue')
+            }
                     // {
                     //     path: 'discuss',
                     //     name: 'course_discuss',

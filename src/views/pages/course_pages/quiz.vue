@@ -12,8 +12,44 @@
       <button @click="loadQuestions" class="retry-btn">重试</button>
     </div>
     
-    <!-- 测验内容 -->
-    <div v-else class="quiz-content">
+    <!-- 结果显示模式 -->
+    <div v-else-if="showResult" class="result-mode">
+      <div class="result-card">
+        <div class="result-header">
+          <h1>🎉 测验完成！</h1>
+        </div>
+        
+        <div class="result-summary">
+          <div class="score-circle" :class="scoreClass">
+            <span class="score-text">{{ calculatedScore }}</span>
+            <span class="score-total">/{{ totalScore }}</span>
+          </div>
+          <p class="score-desc">{{ resultDesc }}</p>
+        </div>
+
+        <div class="result-details">
+          <div class="detail-item">
+            <span class="label">正确题数:</span>
+            <span class="value">{{ correctCount }} / {{ questions.length }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="label">用时:</span>
+            <span class="value">{{ formatTime(timeSpent) }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="label">正确率:</span>
+            <span class="value">{{ accuracy }}%</span>
+          </div>
+        </div>
+
+        <div class="result-actions">
+          <button @click="goBack" class="btn-return">返回测验列表</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 答题模式 -->
+    <div v-else class="quiz-mode">
       <div class="quiz-header">
         <h1>{{ quizTitle }}</h1>
         <div class="quiz-info">
@@ -55,7 +91,7 @@
           <div class="question-header">
             <span class="question-number">题目 {{ currentPage }}</span>
             <span class="question-type">{{ getQuestionTypeText(currentQuestion.type) }}</span>
-            <span class="question-difficulty">难度: {{ currentQuestion.difficulty }}</span>
+            <span class="question-difficulty">难度: {{ '★'.repeat(currentQuestion.difficulty) }}</span>
             <span class="question-score">分值: {{ currentQuestion.score }} 分</span>
           </div>
           
@@ -95,7 +131,7 @@
             >
               <input 
                 type="checkbox"
-                :name="'question-' + currentQuestion.id"
+                :name="'question-' + currentQuestion.id + '-' + option.key"
                 :value="option.key"
                 v-model="userAnswers[currentQuestion.id]"
                 :id="'option-' + currentQuestion.id + '-' + option.key"
@@ -122,19 +158,6 @@
                 class="blank-field"
               />
             </div>
-            <div v-if="currentQuestion.options && currentQuestion.options.length > 0" class="hint">
-              <p>提示选项:</p>
-              <div class="hint-options">
-                <span 
-                  v-for="option in currentQuestion.options" 
-                  :key="option.key"
-                  class="hint-option"
-                  @click="userAnswers[currentQuestion.id] = option.key"
-                >
-                  {{ option.key }}. {{ option.content }}
-                </span>
-              </div>
-            </div>
           </div>
           
           <!-- 编程题 -->
@@ -148,7 +171,7 @@
                 v-model="userAnswers[currentQuestion.id]"
                 placeholder="在此编写你的代码..."
                 class="code-field"
-                rows="10"
+                rows="12"
               ></textarea>
             </div>
           </div>
@@ -169,64 +192,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import axios from 'axios';
-
-// 配置axios实例
-const api = axios.create({
-  baseURL: 'http://patrickshao.site:8000',
-  timeout: 10000,
-});
-
-// 定义接口类型
-interface Option {
-  key: string;
-  content: string;
-}
-
-interface Question {
-  id: string;
-  content: string;
-  explanation: string;
-  difficulty: number;
-  concept: string;
-  score: number;
-  type: 'single_choice' | 'multiple_choice' | 'fill_in_blank' | 'programming';
-  options: Option[];
-  correct_answer?: string;
-  correct_answers?: string[];
-  template_code?: string;
-  test_cases?: any[];
-}
-
-interface QuestionSet {
-  id: string;
-  resource_id: string;
-  questions: Question[];
-  created_time: string;
-  updated_time: string;
-}
-
-interface SubmitAnswerRequest {
-  student_id: string;
-  student_name: string;
-  question_set_id: string;
-  answers: { [key: string]: string | string[] };
-  time_spent: number;
-}
-
-interface SubmitAnswerResponse {
-  id: string;
-  student_id: string;
-  student_name: string;
-  question_set_id: string;
-  answers: { [key: string]: any };
-  scores: { [key: string]: number };
-  submit_time: string;
-  total_score: number;
-  time_spent: number;
-}
+import { getQuestions, submitAnswers as submitAnswersAPI } from '@/api/testBank';
+import type { Question, QuestionSet, SubmitAnswerRequest } from '@/api/testBank';
 
 // 路由信息
 const route = useRoute();
@@ -242,9 +211,14 @@ const loading = ref(false);
 const error = ref('');
 const isSubmitting = ref(false);
 
+// 新增：结果显示状态
+const showResult = ref(false);
+const calculatedScore = ref(0);
+const correctCount = ref(0);
+
 // 计时相关
-const timeSpent = ref(0); // 秒
-let timer: number | null = null;
+const timeSpent = ref(0);
+let timer: ReturnType<typeof setInterval> | null = null;
 
 // 分页
 const currentPage = ref(1);
@@ -258,15 +232,81 @@ const totalScore = computed(() => {
   return questions.value.reduce((sum, q) => sum + q.score, 0);
 });
 
+// 计算得分和正确率
+const calculateScore = (): void => {
+  let score = 0;
+  let correct = 0;
+  
+  questions.value.forEach(question => {
+    const userAnswer = userAnswers.value[question.id];
+    const correctAnswer = question.correct_answer || question.correct_answers;
+    
+    if (!userAnswer || !correctAnswer) return;
+    
+    let isCorrect = false;
+    
+    switch (question.type) {
+      case 'single_choice':
+      case 'fill_in_blank':
+      case 'programming':
+        // 字符串答案：去除空格后比较（忽略大小写）
+        isCorrect = String(userAnswer).trim().toLowerCase() === String(correctAnswer).trim().toLowerCase();
+        break;
+        
+      case 'multiple_choice':
+        // 数组答案：排序后比较
+        const userAns = Array.isArray(userAnswer) ? [...userAnswer].sort() : [];
+        const correctAns = Array.isArray(correctAnswer) ? [...correctAnswer].sort() : [];
+        isCorrect = JSON.stringify(userAns) === JSON.stringify(correctAns);
+        break;
+    }
+    
+    if (isCorrect) {
+      score += question.score;
+      correct++;
+    }
+  });
+  
+  calculatedScore.value = score;
+  correctCount.value = correct;
+};
+
+const accuracy = computed(() => {
+  return questions.value.length > 0 
+    ? Math.round((correctCount.value / questions.value.length) * 100) 
+    : 0;
+});
+
+const resultDesc = computed(() => {
+  const percentage = totalScore.value > 0 ? (calculatedScore.value / totalScore.value) * 100 : 0;
+  if (percentage >= 90) return '太棒了！优秀！';
+  if (percentage >= 70) return '不错！继续加油！';
+  if (percentage >= 60) return '及格了，还有进步空间！';
+  return '需要多多努力哦！';
+});
+
+const scoreClass = computed(() => {
+  const percentage = totalScore.value > 0 ? (calculatedScore.value / totalScore.value) * 100 : 0;
+  if (percentage >= 90) return 'excellent';
+  if (percentage >= 70) return 'good';
+  if (percentage >= 60) return 'pass';
+  return 'fail';
+});
+
 // 加载题目
 const loadQuestions = async () => {
+  if (!resourceId) {
+    error.value = '资源ID不存在或格式错误';
+    return;
+  }
+
   loading.value = true;
   error.value = '';
   
   try {
-    const response = await api.get<QuestionSet>(`/api/question_bank/questions/${resourceId}`);
-    questions.value = response.data.questions;
-    questionSetId.value = response.data.id;
+    const data = await getQuestions(resourceId);
+    questions.value = data.questions;
+    questionSetId.value = data.id;
     
     // 初始化用户答案
     questions.value.forEach(q => {
@@ -277,11 +317,10 @@ const loadQuestions = async () => {
       }
     });
     
-    // 开始计时
     startTimer();
   } catch (err: any) {
     console.error('加载题目失败:', err);
-    error.value = err.response?.data?.detail?.[0]?.msg || '加载题目失败，请稍后重试';
+    error.value = err.message || '加载题目失败，请稍后重试';
   } finally {
     loading.value = false;
   }
@@ -289,7 +328,7 @@ const loadQuestions = async () => {
 
 // 计时器
 const startTimer = () => {
-  timer = window.setInterval(() => {
+  timer = setInterval(() => {
     timeSpent.value++;
   }, 1000);
 };
@@ -305,44 +344,64 @@ const stopTimer = () => {
 const prevPage = () => {
   if (currentPage.value > 1) {
     currentPage.value--;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 };
 
 const nextPage = () => {
   if (currentPage.value < questions.value.length) {
     currentPage.value++;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 };
 
 // 提交答案
 const submitAnswers = async () => {
-  if (isSubmitting.value) return;
+  if (isSubmitting.value || questions.value.length === 0) return;
   
+  const confirmed = confirm('确定要提交答案吗？提交后将无法修改。');
+  if (!confirmed) return;
+
   isSubmitting.value = true;
   stopTimer();
   
   try {
+    // 准备提交数据
+    const studentInfo = {
+      student_id: localStorage.getItem('student_id') || 'student_001',
+      student_name: localStorage.getItem('student_name') || '测试学生'
+    };
+
     const submitData: SubmitAnswerRequest = {
-      student_id: 'student_001', // 实际应用中应从用户信息获取
-      student_name: '测试学生',  // 实际应用中应从用户信息获取
+      ...studentInfo,
       question_set_id: questionSetId.value,
       answers: userAnswers.value,
       time_spent: timeSpent.value
     };
     
-    const response = await api.post<SubmitAnswerResponse>('/api/question_bank/answers/grade-submit', submitData);
+    console.log('提交的数据:', submitData);
     
-    // 跳转到结果页面或显示结果
-    router.push({
-      name: 'quiz-result',
-      query: {
-        result: JSON.stringify(response.data)
-      }
+    // 调用后端（即使失败也继续）
+    const result = await submitAnswersAPI(submitData).catch(err => {
+      console.warn('后端提交失败，使用前端计算:', err);
+      return null;
     });
     
+    console.log('后端返回:', result);
+    
+    // ✅ 前端计算分数（无论后端是否成功）
+    calculateScore();
+    
+    // ✅ 切换到结果显示
+    showResult.value = true;
+    
   } catch (err: any) {
-    console.error('提交答案失败:', err);
-    alert('提交失败: ' + (err.response?.data?.detail?.[0]?.msg || '网络错误'));
+    console.error('提交失败:', err);
+    alert(`提交失败: ${err.message}，将仅显示本地计算结果。`);
+    
+    // 即使出错也显示结果
+    calculateScore();
+    showResult.value = true;
   } finally {
     isSubmitting.value = false;
   }
@@ -350,7 +409,7 @@ const submitAnswers = async () => {
 
 // 工具函数
 const getQuestionTypeText = (type: string): string => {
-  const typeMap: { [key: string]: string } = {
+  const typeMap: Record<string, string> = {
     'single_choice': '单选题',
     'multiple_choice': '多选题',
     'fill_in_blank': '填空题',
@@ -360,7 +419,7 @@ const getQuestionTypeText = (type: string): string => {
 };
 
 const formatContent = (content: string): string => {
-  // 简单的格式化，可以扩展为更复杂的Markdown或HTML解析
+  if (!content) return '';
   return content.replace(/\n/g, '<br>');
 };
 
@@ -370,25 +429,44 @@ const formatTime = (seconds: number): string => {
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 };
 
-// 组件挂载时加载题目
+// 新增：返回列表
+const goBack = () => {
+  router.push({
+    name: 'set_test'
+  });
+};
+
+const viewReview = () => {
+  alert('解析功能开发中...');
+};
+
+// 生命周期钩子
 onMounted(() => {
-  if (!resourceId) {
-    error.value = '资源ID不存在';
-    return;
-  }
   loadQuestions();
+
+  window.addEventListener('beforeunload', (e) => {
+    if (questions.value.length > 0 && !isSubmitting.value && !showResult.value) {
+      e.preventDefault();
+      e.returnValue = '您有未提交的答案，确定要离开吗？';
+    }
+  });
 });
 
-// 组件卸载时清除计时器
+onUnmounted(() => {
+  stopTimer();
+});
+
 watch(() => route.params.resourceId, (newId) => {
   if (newId && newId !== resourceId) {
     stopTimer();
+    showResult.value = false;  // 重置结果状态
     loadQuestions();
   }
 });
 </script>
 
 <style scoped>
+/* ==================== 全局容器样式 ==================== */
 .quiz-container {
   max-width: 900px;
   margin: 0 auto;
@@ -399,7 +477,7 @@ watch(() => route.params.resourceId, (newId) => {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
-/* 加载状态 */
+/* ==================== 加载和错误状态 ==================== */
 .loading-container, .error-container {
   text-align: center;
   padding: 40px;
@@ -440,7 +518,139 @@ watch(() => route.params.resourceId, (newId) => {
   background-color: #2980b9;
 }
 
-/* 测验内容 */
+/* ==================== 结果显示模式 ==================== */
+.result-mode {
+  padding: 20px;
+}
+
+.result-card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  padding: 40px;
+  text-align: center;
+}
+
+.result-header h1 {
+  color: #2c3e50;
+  margin-bottom: 30px;
+}
+
+.result-summary {
+  margin-bottom: 40px;
+}
+
+.score-circle {
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 20px;
+  color: white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.score-circle.excellent {
+  background: linear-gradient(135deg, #52c41a 0%, #73d13d 100%);
+}
+
+.score-circle.good {
+  background: linear-gradient(135deg, #1890ff 0%, #69c0ff 100%);
+}
+
+.score-circle.pass {
+  background: linear-gradient(135deg, #faad14 0%, #ffc53d 100%);
+}
+
+.score-circle.fail {
+  background: linear-gradient(135deg, #ff4d4f 0%, #ff7875 100%);
+}
+
+.score-text {
+  font-size: 56px;
+  font-weight: bold;
+}
+
+.score-total {
+  font-size: 28px;
+  margin-left: 5px;
+}
+
+.score-desc {
+  color: #7f8c8d;
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.result-details {
+  margin-bottom: 40px;
+  text-align: left;
+  max-width: 400px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.detail-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid #eee;
+}
+
+.detail-item:last-child {
+  border-bottom: none;
+}
+
+.label {
+  color: #666;
+  font-size: 16px;
+}
+
+.value {
+  font-weight: 600;
+  color: #333;
+  font-size: 16px;
+}
+
+.result-actions {
+  margin-top: 30px;
+  display: flex;
+  gap: 15px;
+  justify-content: center;
+}
+
+.btn-return {
+  background-color: #3498db;
+  color: white;
+  border: none;
+  padding: 12px 30px;
+  border-radius: 6px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.btn-return:hover {
+  background-color: #2980b9;
+}
+
+.btn-review {
+  background-color: #52c41a;
+  color: white;
+  border: none;
+  padding: 12px 30px;
+  border-radius: 6px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.btn-review:hover {
+  background-color: #73d13d;
+}
+
 .quiz-header {
   margin-bottom: 25px;
   padding-bottom: 15px;
@@ -558,7 +768,6 @@ watch(() => route.params.resourceId, (newId) => {
   color: #333;
 }
 
-/* 选项样式 */
 .options-container {
   display: flex;
   flex-direction: column;
@@ -603,13 +812,8 @@ watch(() => route.params.resourceId, (newId) => {
   min-width: 20px;
 }
 
-/* 填空题样式 */
 .fill-blank-container {
   margin-top: 20px;
-}
-
-.blank-input {
-  margin-bottom: 15px;
 }
 
 .blank-input label {
@@ -627,38 +831,6 @@ watch(() => route.params.resourceId, (newId) => {
   font-size: 15px;
 }
 
-.hint {
-  background-color: #f9f9f9;
-  padding: 15px;
-  border-radius: 6px;
-  border-left: 4px solid #3498db;
-}
-
-.hint p {
-  font-weight: 600;
-  margin-bottom: 10px;
-  color: #2c3e50;
-}
-
-.hint-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.hint-option {
-  background-color: #e3f2fd;
-  padding: 5px 10px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.hint-option:hover {
-  background-color: #bbdefb;
-}
-
-/* 编程题样式 */
 .programming-container {
   margin-top: 20px;
 }
@@ -681,7 +853,7 @@ watch(() => route.params.resourceId, (newId) => {
   font-family: 'Courier New', monospace;
 }
 
-.code-editor textarea {
+.code-field {
   width: 100%;
   padding: 12px;
   border: 1px solid #ddd;

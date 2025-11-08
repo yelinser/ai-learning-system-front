@@ -48,34 +48,8 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import axios from 'axios';
-
-// 配置axios实例
-const api = axios.create({
-  baseURL: 'http://patrickshao.site:8000',
-  timeout: 10000,
-});
-
-// 定义接口类型
-interface ResourceMetadata {
-  title?: string;
-  author?: string;
-  keywords?: string[];
-  course?: string;
-  chapter?: string;
-}
-
-interface Resource {
-  filename: string;
-  content_type: string;
-  size: number;
-  resource_type: string;
-  metadata: ResourceMetadata;
-  id: string;
-  upload_time: string;
-  file_path: string;
-  vector_id: string;
-}
+import { getResources, getResourceTypeText, formatFileSize, formatDate } from '@/api/testBank';
+import type { Resource } from '@/api/testBank';
 
 // 响应式数据
 const resources = ref<Resource[]>([]);
@@ -90,11 +64,11 @@ const loadResources = async () => {
   error.value = '';
   
   try {
-    const response = await api.get<Resource[]>('/api/v1/resources/');
-    resources.value = response.data;
+    const data = await getResources();
+    resources.value = data;
   } catch (err: any) {
     console.error('加载资源失败:', err);
-    error.value = err.response?.data?.detail?.[0]?.msg || '加载资源列表失败，请稍后重试';
+    error.value = err.message || '加载资源列表失败，请稍后重试';
   } finally {
     loading.value = false;
   }
@@ -113,35 +87,6 @@ const goToQuiz = (resource: Resource) => {
   });
 };
 
-// 工具函数
-const getResourceTypeText = (type: string): string => {
-  const typeMap: { [key: string]: string } = {
-    'text': '文本',
-    'pdf': 'PDF',
-    'doc': '文档',
-    'video': '视频',
-    'audio': '音频',
-    'image': '图片'
-  };
-  return typeMap[type] || type;
-};
-
-const formatFileSize = (bytes: number): string => {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-};
-
-const formatDate = (dateString: string): string => {
-  const date = new Date(dateString);
-  return date.toLocaleDateString('zh-CN') + ' ' + date.toLocaleTimeString('zh-CN', { 
-    hour: '2-digit', 
-    minute: '2-digit' 
-  });
-};
-
 // 组件挂载时加载资源
 onMounted(() => {
   loadResources();
@@ -149,6 +94,7 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* 样式保持不变... */
 .quiz-container {
   max-width: 1000px;
   margin: 0 auto;
@@ -169,11 +115,9 @@ onMounted(() => {
   color: #333;
 }
 
-/* 加载状态 */
-.loading-container {
+.loading-container, .error-container {
   padding: 40px;
   text-align: center;
-  color: #666;
 }
 
 .loading-spinner {
@@ -189,12 +133,6 @@ onMounted(() => {
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
-}
-
-/* 错误状态 */
-.error-container {
-  padding: 40px;
-  text-align: center;
 }
 
 .error-message {
@@ -217,7 +155,6 @@ onMounted(() => {
   background-color: #2980b9;
 }
 
-/* 资源列表 */
 .quiz-list {
   padding: 20px 24px;
 }
@@ -290,7 +227,6 @@ onMounted(() => {
   background-color: #73d13d;
 }
 
-/* 空状态 */
 .empty-state {
   padding: 40px;
   text-align: center;
