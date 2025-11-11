@@ -222,12 +222,12 @@ export const menuData: Menus[] = [
 
 
 export const teacherMenuData: Menus[] = [
-    {
-        id: 't0',
-        title: '教师首页',
-        index: '/home_teacher/teacher_dashboard',
-        icon: 'HomeFilled',
-    },
+    // {
+    //     id: 't0',
+    //     title: '教师首页',
+    //     index: '/home_teacher/teacher_dashboard',
+    //     icon: 'HomeFilled',
+    // },
     {
         id: 't1',
         title: '知识管理',
@@ -249,49 +249,38 @@ export const teacherMenuData: Menus[] = [
 ];
 
 export const studentMenuData: Menus[] = [
-    {
-        id: 's0',
-        title: '学生首页',
-        index: '/home_student/student_dashboard',
-        icon: 'HomeFilled',
-    },
+    // {
+    //     id: 's0',
+    //     title: '学生首页',
+    //     index: '/home_student/student_dashboard',
+    //     icon: 'HomeFilled',
+    // },
     {
         id: 's1',
+        index: '/home_student/material',
+        title: '课件',
+        icon: 'Notebook'
+    },
+    {
+        id: 's2',
         title: '学习路径推荐',
         index: '/home_student/learning_path',
         icon: 'DataLine'
     },
     {
-        id: 's2',
-        title: '课程详情',
-        index: '/home_student/course_detail',
-        icon: 'Reading',
-        children: [
-            {
-                id: 's21',
-                index: '/home_student/notice',
-                title: '课程公告',
-            },
-            {
-                id: 's22',
-                index: '/home_student/material',
-                title: '课件',
-            },
-            {
-                id: 's23',
-                index: '/home_student/set_test',
-                title: '测试',
-            },
-        ],
+        id: 's3',
+        index: '/home_student/set_test',
+        title: '测试',
+        icon: 'DocumentChecked'
     },
     {
-        id: 's3',
+        id: 's4',
         title: '知识图谱',
         index: '/home_student/knowledge_graph',
         icon: 'MagicStick'
     },
     {
-        id: 's4',
+        id: 's5',
         title: 'ai助教',
         index: '/home_student/ai_teacher',
         icon: 'ChatLineRound'

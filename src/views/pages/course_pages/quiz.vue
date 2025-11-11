@@ -196,6 +196,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { getQuestions, submitAnswers as submitAnswersAPI } from '@/api/testBank';
 import type { Question, QuestionSet, SubmitAnswerRequest } from '@/api/testBank';
+import { UserInfo } from '@/api/user';
 
 // 路由信息
 const route = useRoute();
@@ -355,6 +356,19 @@ const nextPage = () => {
   }
 };
 
+// 从localStorage获取用户信息
+const getUserInfoFromStorage = (): UserInfo | null => {
+    try {
+        const userInfoStr = localStorage.getItem('user_info')
+        if (userInfoStr) {
+            return JSON.parse(userInfoStr) as UserInfo
+        }
+    } catch (error) {
+        console.error('解析用户信息失败:', error)
+    }
+    return null
+}
+
 // 提交答案
 const submitAnswers = async () => {
   if (isSubmitting.value || questions.value.length === 0) return;
@@ -366,10 +380,11 @@ const submitAnswers = async () => {
   stopTimer();
   
   try {
+    const userInfo = getUserInfoFromStorage();
     // 准备提交数据
     const studentInfo = {
-      student_id: localStorage.getItem('student_id') || 'student_001',
-      student_name: localStorage.getItem('student_name') || '测试学生'
+      student_id: userInfo.username|| 'student_001',
+      student_name: userInfo.name || '测试学生'
     };
 
     const submitData: SubmitAnswerRequest = {

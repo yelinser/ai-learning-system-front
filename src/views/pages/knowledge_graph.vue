@@ -194,7 +194,7 @@ const loadGraphData = async () => {
       连接总数: graphData.value.links.length,
       章节数: new Set(graphData.value.nodes.map(n => n.chapter).filter(Boolean)).size,
       节点类型分布: Object.fromEntries(
-        ['chapter', 'concept', 'resource'].map(t => [
+        ['chapter', 'concept', 'resource', 'student', 'learningrecord'].map(t => [
           t,
           graphData.value.nodes.filter(n => n.category === t).length
         ])
@@ -318,7 +318,9 @@ const initChart = () => {
       categories: [
         { name: 'chapter', itemStyle: { color: '#67c23a' } },
         { name: 'concept', itemStyle: { color: '#409eff' } },
-        { name: 'resource', itemStyle: { color: '#e6a23c' } }
+        { name: 'resource', itemStyle: { color: '#e6a23c' } },
+        { name: 'student', itemStyle: { color: '#f56c6c' } },
+        { name: 'learningrecord', itemStyle: { color: '#909399' } }
       ],
       roam: true,
       focusNodeAdjacency: true,

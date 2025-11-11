@@ -40,7 +40,7 @@ interface Neo4jGraphData {
 export interface GraphNode {
   id: string;
   name: string;          
-  category: 'chapter' | 'concept' | 'resource';
+  category: 'chapter' | 'concept' | 'resource' | 'student' | 'learningrecord';
   status: 'mastered' | 'learning' | 'unlearned';
   progress?: number;     
   chapter?: string;      
@@ -61,6 +61,7 @@ export interface GraphLink {
   target: string;
   label?: string;
   lineStyle?: any;
+  id?: string;
 }
 
 export interface GraphData {
@@ -75,7 +76,7 @@ const convertNeo4jNode = (neoNode: Neo4jNode, index: number): GraphNode | null =
   const props = neoNode.properties || {};
   const labels = neoNode.labels || [];
   
-  const validLabels = ['Resource', 'Concept', 'Chapter'];
+  const validLabels = ['Resource', 'Concept', 'Chapter','Student','LearningRecord'];
   const primaryLabel = labels.find(l => validLabels.includes(l));
   
   if (!primaryLabel) return null;
@@ -92,7 +93,7 @@ const convertNeo4jNode = (neoNode: Neo4jNode, index: number): GraphNode | null =
     name = idParts[idParts.length - 1] || '未命名';
   }
   
-  const category = primaryLabel.toLowerCase() as 'resource' | 'concept' | 'chapter';
+  const category = primaryLabel.toLowerCase() as 'resource' | 'concept' | 'chapter' | 'student' | 'learningrecord';
   
   const statusStyleMap = {
     mastered: { color: '#67c23a', size: 50 },
@@ -100,7 +101,11 @@ const convertNeo4jNode = (neoNode: Neo4jNode, index: number): GraphNode | null =
     unlearned: { color: '#909399', size: 35 }
   };
   
-  const status = (props.status || 'unlearned') as 'mastered' | 'learning' | 'unlearned';
+    // 验证 status 是否有效，如果无效则使用默认值
+  const validStatuses = ['mastered', 'learning', 'unlearned'] as const;
+  const status = validStatuses.includes(props.status as any) 
+    ? (props.status as 'mastered' | 'learning' | 'unlearned')
+    : 'unlearned'; // 默认值
   const style = statusStyleMap[status];
   
   return {
@@ -131,8 +136,9 @@ const convertNeo4jRelationship = (
   const startNode = neoRel.start_node_id ?? '';
   const endNode = neoRel.end_node_id ?? '';
   const relType = neoRel.type ?? '';
+  const id = neoRel.id ?? '';
 
-  console.log(`[关系#${index}] 开始转换: start="${startNode}", end="${endNode}", type="${relType}"`);
+  //console.log(`[关系#${index}] 开始转换: start="${startNode}", end="${endNode}", type="${relType}"`);
 
   // ✅ 严格校验：任一字段为空就跳过
   if (!startNode || !endNode || startNode === '' || endNode === '') {
@@ -186,10 +192,11 @@ const convertNeo4jRelationship = (
       width: style.width,
       type: style.type,
       curveness: 0.2
-    }
+    },
+    id: id
   };
   
-  console.log(`[关系#${index}] ✅ 转换成功: ${startNode} -> ${endNode}`);
+  //console.log(`[关系#${index}] ✅ 转换成功: ${startNode} -> ${endNode}`);
   return link;
 };
 
@@ -206,19 +213,19 @@ export const getGraphData = (): Promise<GraphData> => {
       const nodes = response?.nodes || [];
       const relationships = response?.relationships || [];
       
-      console.log(`📊 数据概览: ${nodes.length} 节点, ${relationships.length} 关系`);
-      console.log('🔍 前5条关系预览:', relationships.slice(0, 5));
+      //console.log(`📊 数据概览: ${nodes.length} 节点, ${relationships.length} 关系`);
+      //console.log('🔍 前5条关系预览:', relationships.slice(0, 5));
       
       // ✅ 转换节点
-      console.group('节点转换');
+      //console.group('节点转换');
       const graphNodes = nodes
         .map((node, index) => convertNeo4jNode(node, index))
         .filter((node): node is GraphNode => node !== null);
-      console.log(`✅ 节点转换完成: ${graphNodes.length} 个`);
-      console.groupEnd();
+      //console.log(`✅ 节点转换完成: ${graphNodes.length} 个`);
+      //console.groupEnd();
       
       // ✅ 构建映射
-      console.group('名称映射表');
+      //console.group('名称映射表');
       const nameToIdMap = new Map<string, string>();
       graphNodes.forEach(node => {
         nameToIdMap.set(node.name, node.id);
@@ -228,18 +235,18 @@ export const getGraphData = (): Promise<GraphData> => {
           nameToIdMap.set(originalNode.properties.title, node.id);
         }
       });
-      console.log(`✅ 映射表: ${nameToIdMap.size} 条记录`);
-      console.groupEnd();
+      //console.log(`✅ 映射表: ${nameToIdMap.size} 条记录`);
+      //console.groupEnd();
       
       // ✅ 转换关系
-      console.group('关系转换');
+      //console.group('关系转换');
       const links = relationships
         .map((rel, index) => {
-          console.log(`\n[关系#${index}] 开始处理`);
+          //.log(`\n[关系#${index}] 开始处理`);
           return convertNeo4jRelationship(rel, nameToIdMap, index);
         })
         .filter((link): link is GraphLink => link !== null);
-      console.log(`✅ 关系转换完成: ${links.length} 条有效连接`);
+      //.log(`✅ 关系转换完成: ${links.length} 条有效连接`);
       console.groupEnd();
       
       console.groupEnd();
@@ -261,8 +268,18 @@ export interface Concept {
   description?: string;
 }
 
-export const getAllConcepts = () =>
-  request<Concept[]>({ url: '/knowledge-graph/concepts', method: 'get' }).then(res => res.data);
+// 修正 API 函数
+export const getAllConcepts = (): Promise<Concept[]> =>
+  request<{ concepts: Concept[] }>({ 
+    url: '/knowledge-graph/concepts', 
+    method: 'get' 
+  }).then(res => {
+    // 由于拦截器直接返回 data，res 已经是 { concepts: Concept[] }
+    return (res as any).concepts || []; // 临时使用 any 绕过类型检查
+  }).catch(error => {
+    console.error('获取概念列表失败:', error);
+    return []; // 确保出错时返回空数组
+  });
 
 export interface AddConceptDTO {
   name: string;
@@ -283,9 +300,20 @@ export interface Relationship {
   target: string;
   relationType: string;
 }
-export const getAllRelationships = () =>
-  request<Relationship[]>({ url: '/knowledge-graph/relationships', method: 'get' }).then(res => res.data);
 
+export interface Relationship2 {
+    start_node: string;
+    relationship_type: string;
+    end_node: string;
+}
+export const getAllRelationships = () =>
+  request<{relationships:Relationship2[]}>({ url: '/knowledge-graph/relationships', method: 'get' })
+.then(
+  res=> {
+    // 由于拦截器直接返回 data，res 已经是 { concepts: Concept[] }
+    return (res as any).relationships || []; // 临时使用 any 绕过类型检查);
+  }
+  );
 export interface AddRelationshipDTO {
   source: string;
   target: string;

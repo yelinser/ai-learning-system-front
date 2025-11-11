@@ -29,7 +29,7 @@ const routes: RouteRecordRaw[] = [
     {
         path: '/home_student',
         name: 'home_student',
-        redirect: '/home_student/student_dashboard',
+        redirect: '/home_student/course_material',
         component: home_student,
         children:[
           {
@@ -132,7 +132,7 @@ const routes: RouteRecordRaw[] = [
     {
         path: '/home_teacher',
         name: 'home_teacher',
-        redirect: '/home_teacher/teacher_dashboard',
+        redirect: '/home_teacher/knowledge_manage',
         component: home_teacher,
         children:[
             {
