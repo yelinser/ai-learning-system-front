@@ -33,6 +33,7 @@
 import { ref, watch } from 'vue';
 import { useTabsStore } from '../store/tabs';
 import { onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router';
+import { ElMessage } from 'element-plus';
 
 const route = useRoute();
 const router = useRouter();
@@ -105,6 +106,11 @@ const clickTabls = (item: any) => {
     router.push(item.props.name);
 };
 const closeTabs = (path: string) => {
+        // 如果只剩最后一个标签页，不允许关闭
+    if (tabs.list.length <= 1) {
+        ElMessage.warning('不能关闭最后一个标签页');
+        return;
+    }
     const index = tabs.list.findIndex((item) => item.path === path);
     tabs.delTabsItem(index);
     const item = tabs.list[index] || tabs.list[index - 1];

@@ -29,17 +29,17 @@ const routes: RouteRecordRaw[] = [
     {
         path: '/home_student',
         name: 'home_student',
-        redirect: '/home_student/course_material',
+        redirect: '/home_student/material',
         component: home_student,
         children:[
-          {
-                path: 'student_dashboard',
-                name: 'student_dashboard',
-                meta: {
-                    title: '学生首页',
-                },
-                component: () => import('../views/dashboard_student.vue')
-            },
+        //   {
+        //         path: 'student_dashboard',
+        //         name: 'student_dashboard',
+        //         meta: {
+        //             title: '学生首页',
+        //         },
+        //         component: () => import('../views/dashboard_student.vue')
+        //     },
             {
                 path:'learning_path',
                 name:'learning_path',
@@ -135,15 +135,15 @@ const routes: RouteRecordRaw[] = [
         redirect: '/home_teacher/knowledge_manage',
         component: home_teacher,
         children:[
-            {
-                path: 'teacher_dashboard',
-                name: 'teacher_dashboard',
-                meta: {
-                    title: '教师首页',
-                    //permiss: 'teacher'
-                },
-                component: () => import('../views/dashboard_teacher.vue')
-            },
+            // {
+            //     path: 'teacher_dashboard',
+            //     name: 'teacher_dashboard',
+            //     meta: {
+            //         title: '教师首页',
+            //         //permiss: 'teacher'
+            //     },
+            //     component: () => import('../views/dashboard_teacher.vue')
+            // },
             {
                 path: 't_notices',
                 name: 't_notices',

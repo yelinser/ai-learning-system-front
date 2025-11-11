@@ -154,9 +154,9 @@ const submitForm = async (formEl: FormInstance | undefined) => {
                 if (userInfo.role === 'admin') {
                     router.push('/dashboard');
                 } else if (userInfo.role === 'teacher') {
-                    router.push('/home_teacher/teacher_dashboard');
+                    router.push('/home_teacher');
                 } else {
-                    router.push('/home_student/student_dashboard');
+                    router.push('/home_student');
                 }
             } else {
                 // 登录失败，显示后端返回的错误信息

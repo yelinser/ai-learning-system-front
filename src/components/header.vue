@@ -15,12 +15,12 @@
         </div>
         <div class="header-right">
             <div class="header-user-con">
-                <div class="btn-icon" @click="router.push('/theme')">
+                <!-- <div class="btn-icon" @click="router.push('/theme')">
                     <el-tooltip effect="dark" content="设置主题" placement="bottom">
                         <i class="el-icon-lx-skin"></i>
                     </el-tooltip>
-                </div>
-                <div class="btn-icon" @click="goToNotice">
+                </div> -->
+                <!-- <div class="btn-icon" @click="goToNotice">
                     <el-tooltip
                         effect="dark"
                         :content="message ? `有${message}条未读消息` : `消息中心`"
@@ -29,7 +29,7 @@
                         <i class="el-icon-lx-notice"></i>
                     </el-tooltip>
                     <span class="btn-bell-badge" v-if="message"></span>
-                </div>
+                </div> -->
                 <div class="btn-icon" @click="setFullScreen">
                     <el-tooltip effect="dark" content="全屏" placement="bottom">
                         <i class="el-icon-lx-full"></i>
