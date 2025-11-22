@@ -119,12 +119,6 @@ const rules: FormRules = {
             required: true,
             message: '请输入用户名',
             trigger: 'blur',
-        },
-        {
-            min: 3,
-            max: 20,
-            message: '用户名长度在3到20个字符之间',
-            trigger: 'blur',
         }
     ],
     name: [
@@ -139,22 +133,12 @@ const rules: FormRules = {
             required: true, 
             message: '请输入邮箱', 
             trigger: 'blur' 
-        },
-        {
-            type: 'email',
-            message: '请输入有效的邮箱地址',
-            trigger: ['blur', 'change'],
         }
     ],
     phone: [
         {
             required: true,
             message: '请输入手机号',
-            trigger: 'blur',
-        },
-        {
-            pattern: /^1[3-9]\d{9}$/,
-            message: '请输入有效的手机号码',
             trigger: 'blur',
         }
     ],
@@ -170,17 +154,6 @@ const rules: FormRules = {
             required: true, 
             message: '请输入密码', 
             trigger: 'blur' 
-        },
-        {
-            min: 6,
-            max: 20,
-            message: '密码长度在6到20个字符之间',
-            trigger: 'blur',
-        },
-        {
-            pattern: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{6,20}$/,
-            message: '密码需包含大小写字母、数字和特殊字符',
-            trigger: 'blur',
         }
     ]
 };
@@ -193,7 +166,7 @@ const submitForm = async (formEl: FormInstance | undefined) => {
     formEl.validate(async (valid: boolean) => {
         if (!valid) {
             ElMessage.error('请填写完整的注册信息');
-            return false;
+            return;
         }
 
         loading.value = true;

@@ -42,11 +42,11 @@
               <input type="text" v-model="userInfo.role" disabled>
               <span class="field-note">角色不可修改</span>
             </div>
-            <div class="form-group">
+            <!-- <div class="form-group">
               <label>用户ID</label>
               <input type="text" v-model="userInfo.id" disabled>
               <span class="field-note">系统生成，不可修改</span>
-            </div>
+            </div> -->
             <div class="form-group">
               <label>注册时间</label>
               <input type="text" :value="formatDate(userInfo.created_time)" disabled>
@@ -111,12 +111,26 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { getUserInfo, updateUserInfo, changePassword as apiChangePassword } from '@/api/user';
 
-// 用户数据 - 根据接口定义初始化
-const userInfo = ref({
+// 定义用户信息接口
+interface UserInfo {
+  id: string;
+  username: string;
+  role: string;
+  name: string;
+  email: string;
+  phone: string;
+  created_time: string;
+  updated_time: string;
+  is_active: boolean;
+  last_login: string | null;
+}
+
+// 用户数据
+const userInfo = ref<UserInfo>({
   id: '',
   username: '',
   role: '',
@@ -130,7 +144,7 @@ const userInfo = ref({
 });
 
 // 原始用户数据（用于重置）
-const originalUserInfo = ref({});
+const originalUserInfo = ref<UserInfo>({ ...userInfo.value });
 
 // 菜单项
 const menuItems = ref([

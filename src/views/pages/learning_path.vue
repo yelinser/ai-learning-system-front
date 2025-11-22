@@ -67,7 +67,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang='ts'>
 import { ref, onMounted } from 'vue';
 
 // --- 状态定义 ---
@@ -75,13 +75,39 @@ const BASE_URL = 'http://patrickshao.site:8000';
 const learningPath = ref(null); // 将存储 data.recommended_path 数组
 const isLoading = ref(false);
 const error = ref(null);
+interface UserInfo {
+    id: string;
+    username: string;
+    role: string;
+    name: string;
+    email: string;
+    phone: string;
+    created_time: string;
+    updated_time: string;
+    is_active: boolean;
+    last_login: string | null;
+}
+
+// 从localStorage获取用户信息
+const getUserInfoFromStorage = (): UserInfo | null => {
+    try {
+        const userInfoStr = localStorage.getItem('user_info')
+        if (userInfoStr) {
+            return JSON.parse(userInfoStr) as UserInfo
+        }
+    } catch (error) {
+        console.error('解析用户信息失败:', error)
+    }
+    return null
+}
 
 // --- [待替换] 关键假设：Student ID ---
 // 
 // 仍然使用硬编码的 ID 'stu_001'。
 // 在实际应用中，你 *必须* 替换掉它。
 //
-const STUDENT_ID_FOR_DEMO = 'stu_001'; 
+const userInfo = getUserInfoFromStorage();
+const STUDENT_ID_FOR_DEMO = userInfo.username || 'stu_001'; 
 
 /**
  * 3. 获取学习路径 (API 3)
@@ -98,7 +124,7 @@ async function fetchLearningPath(studentId) {
   
   // [已确认] 使用 Query 参数
   const queryParams = new URLSearchParams({
-    num_nodes: 5, 
+    num_nodes: '5', 
     algorithm: 'pagerank'
   });
 
@@ -111,6 +137,7 @@ async function fetchLearningPath(studentId) {
       throw new Error(`HTTP 错误! 状态: ${response.status}`);
     }
     const data = await response.json();
+    console.log('学习路径响应数据:', data);
     
     // --- [已更新] 根据你的 JSON 示例 ---
     // 

@@ -232,7 +232,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -481,8 +481,8 @@ const loadResources = async () => {
 
 // 更新筛选选项
 const updateFilterOptions = (resources) => {
-  const courseSet = new Set()
-  const chapterSet = new Set()
+  const courseSet = new Set<string>()
+  const chapterSet = new Set<string>()
   
   resources.forEach(resource => {
     if (resource.metadata.course) {
@@ -493,8 +493,8 @@ const updateFilterOptions = (resources) => {
     }
   })
   
-  courses.value = Array.from(courseSet)
-  chapters.value = Array.from(chapterSet)
+  courses.value = Array.from(courseSet) as string[]
+  chapters.value = Array.from(chapterSet) as string[]
 }
 
 // 模拟数据加载（备用）

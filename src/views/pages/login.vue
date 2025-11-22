@@ -29,11 +29,11 @@
                         </template>
                     </el-input>
                 </el-form-item>
-                <!-- 新增角色选择单选框 -->
-                <el-form-item prop="role">
-                    <template #label>
-                        <span style="color: #606266; font-size: 14px;">角色选择</span>
-                    </template>
+                <!-- 修改后的角色选择单选框 - 两行布局 -->
+                <el-form-item prop="role" class="role-form-item">
+                    <div class="role-label-container">
+                        <span class="role-label">角色选择</span>
+                    </div>
                     <el-radio-group v-model="param.role" class="role-radio-group">
                         <el-radio label="teacher" size="large">教师</el-radio>
                         <el-radio label="student" size="large">学生</el-radio>
@@ -44,7 +44,6 @@
                     <el-link type="primary" @click="$router.push('/reset-pwd')">忘记密码</el-link>
                 </div>
                 <el-button class="login-btn" type="primary" size="large" :loading="loading" @click="submitForm(login)">登录</el-button>
-                <p class="login-tips" v-if="loginError">{{ loginError }}</p>
                 <p class="login-text">
                     没有账号？<el-link type="primary" @click="$router.push('/register')">立即注册</el-link>
                 </p>
@@ -112,7 +111,7 @@ const submitForm = async (formEl: FormInstance | undefined) => {
     formEl.validate(async (valid: boolean) => {
         if (!valid) {
             ElMessage.error('请填写完整的登录信息');
-            return false;
+            return;
         }
 
         loading.value = true;
@@ -151,9 +150,10 @@ const submitForm = async (formEl: FormInstance | undefined) => {
                 }
                 
                 // 根据用户角色跳转不同页面 - 使用后端返回的角色信息
-                if (userInfo.role === 'admin') {
-                    router.push('/dashboard');
-                } else if (userInfo.role === 'teacher') {
+                // if (userInfo.role === 'admin') {
+                //     router.push('/dashboard');
+                // } else 
+                if (userInfo.role === 'teacher') {
                     router.push('/home_teacher');
                 } else {
                     router.push('/home_student');
@@ -164,23 +164,31 @@ const submitForm = async (formEl: FormInstance | undefined) => {
                 ElMessage.error(loginError.value);
             }
         } catch (error: any) {
-            console.error('登录错误:', error);
-            // 错误处理调整，匹配后端错误格式
-            if (error.response && error.response.data) {
-                // 后端返回的结构化错误
-                const errorData = error.response.data;
-                if (errorData.detail && Array.isArray(errorData.detail)) {
-                    // 处理验证错误
-                    loginError.value = errorData.detail[0]?.msg || '请求参数错误';
+            console.error('登录错误详情:', error);
+            
+            // 直接处理原始错误对象
+            if (error && error.response) {
+                // 有HTTP响应但状态码不是2xx
+                const status = error.response.status;
+                const data = error.response.data;
+                
+                if (status === 401) {
+                    loginError.value = data?.detail || '用户名、密码或角色不正确';
+                } else if (status >= 500) {
+                    loginError.value = '服务器错误，请稍后重试';
                 } else {
-                    loginError.value = errorData.message || errorData.detail || '登录失败';
+                    loginError.value = data?.detail || data?.message || `请求失败，状态码: ${status}`;
                 }
-            } else if (error.message) {
-                // 网络错误或其他错误
+            } else if (error && error.request) {
+                // 请求已发出但没有收到响应
+                loginError.value = '网络错误，请检查网络连接';
+            } else if (error && error.message) {
+                // 其他错误
                 loginError.value = error.message;
             } else {
-                loginError.value = '网络错误，请稍后重试';
+                loginError.value = '登录失败，请稍后重试';
             }
+            
             ElMessage.error(loginError.value);
         } finally {
             loading.value = false;
@@ -225,6 +233,7 @@ tabs.clearTabs();
     background: #fff;
     padding: 40px 50px 50px;
     box-sizing: border-box;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
 }
 
 .pwd-tips {
@@ -232,7 +241,7 @@ tabs.clearTabs();
     justify-content: space-between;
     align-items: center;
     font-size: 14px;
-    margin: -10px 0 10px;
+    margin: -10px 0 20px;
     color: #787878;
 }
 
@@ -243,6 +252,9 @@ tabs.clearTabs();
 .login-btn {
     display: block;
     width: 100%;
+    height: 44px;
+    font-size: 16px;
+    margin-top: 10px;
 }
 
 .login-tips {
@@ -255,16 +267,85 @@ tabs.clearTabs();
 .login-text {
     display: flex;
     align-items: center;
+    justify-content: center;
     margin-top: 20px;
     font-size: 14px;
     color: #787878;
 }
 
-/* 角色选择样式 */
+/* 修改后的角色选择样式 - 两行布局，宽度与输入框一致 */
+.role-form-item {
+    margin-bottom: 20px;
+    width: 100%; /* 确保表单项宽度为100% */
+}
+
+.role-label-container {
+    width: 100%;
+    margin-bottom: 12px;
+}
+
+.role-label {
+    color: #606266;
+    font-size: 14px;
+    font-weight: normal;
+    display: block;
+}
+
 .role-radio-group {
     display: flex;
-    justify-content: space-between;
-    width: 100%;
-    margin-top: 10px;
+    width: 100%; /* 宽度100%确保与输入框一致 */
+    background: #f5f7fa;
+    border-radius: 4px;
+    padding: 8px;
+    box-sizing: border-box;
+}
+
+.role-radio-group .el-radio {
+    flex: 1;
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 36px;
+    border-radius: 4px;
+    transition: all 0.3s ease;
+}
+
+.role-radio-group .el-radio.is-checked {
+    background: #fff;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* 确保Element Plus表单元素的样式一致性 */
+:deep(.el-form-item__content) {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    line-height: normal;
+}
+
+/* 响应式设计 */
+@media (max-width: 480px) {
+    .login-container {
+        width: 90%;
+        padding: 30px 25px 40px;
+    }
+    
+    .login-header {
+        margin-bottom: 30px;
+    }
+    
+    .role-radio-group {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .role-radio-group .el-radio {
+        width: 100%;
+    }
+    
+    .role-label-container {
+        margin-bottom: 10px;
+    }
 }
 </style>

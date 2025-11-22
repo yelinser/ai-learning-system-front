@@ -2,71 +2,71 @@
   <div class="knowledge-graph-container">
     <el-card class="mgb20" shadow="hover">
       <template #header>
-        <div class="content-title">课程知识图谱</div>
+        <div class="content-title">
+          课程知识图谱
+          <el-tag v-if="expandedNodes.size > 0" type="info" size="small" style="margin-left: 10px;">
+            已展开: {{ expandedNodes.size }}个节点
+          </el-tag>
+        </div>
       </template>
 
-      <!-- 知识图谱可视化区域 -->
       <div class="graph-container">
         <div class="graph-controls">
           <el-button-group>
             <el-button @click="zoomIn">
-              <el-icon>
-                <ZoomIn />
-              </el-icon>放大
+              <el-icon><ZoomIn /></el-icon>放大
             </el-button>
             <el-button @click="zoomOut">
-              <el-icon>
-                <ZoomOut />
-              </el-icon>缩小
+              <el-icon><ZoomOut /></el-icon>缩小
             </el-button>
             <el-button @click="resetView">
-              <el-icon>
-                <Refresh />
-              </el-icon>重置
+              <el-icon><Refresh /></el-icon>重置
             </el-button>
             <el-button @click="toggleForceLayout">
-              <el-icon>
-                <Position />
-              </el-icon>{{ forceLayout ? '停止布局' : '力导向布局' }}
+              <el-icon><Position /></el-icon>{{ forceLayout ? '停止布局' : '力导向布局' }}
+            </el-button>
+            <el-button 
+              type="primary" 
+              @click="toggleAllNodes"
+              :icon="isAllExpanded ? 'Fold' : 'Expand'"
+            >
+              {{ isAllExpanded ? '一键收起所有节点' : '一键展开所有节点' }}
             </el-button>
           </el-button-group>
-
-          <div class="filter-controls">
-            <el-select v-model="selectedChapter" placeholder="选择章节" clearable @change="updateGraph">
-              <el-option label="全部章节" value=""></el-option>
-              <el-option v-for="chapter in chapters" :key="chapter" :label="chapter" :value="chapter"></el-option>
-            </el-select>
-
-            <el-select v-model="selectedStatus" placeholder="学习状态" clearable @change="updateGraph">
-              <el-option label="全部状态" value=""></el-option>
-              <el-option label="已掌握" value="mastered"></el-option>
-              <el-option label="学习中" value="learning"></el-option>
-              <el-option label="未学习" value="unlearned"></el-option>
-            </el-select>
-
-            <el-select v-model="selectedType" placeholder="节点类型" clearable @change="updateGraph">
-              <el-option label="全部类型" value=""></el-option>
-              <el-option label="章节" value="chapter"></el-option>
-              <el-option label="知识点" value="concept"></el-option>
-              <el-option label="学习资源" value="resource"></el-option>
-            </el-select>
-          </div>
         </div>
 
-        <!-- ECharts 知识图谱画布 -->
         <div class="graph-canvas" ref="graphCanvas"></div>
         
-        <!-- ✅ 添加调试信息面板 -->
         <div class="debug-info" v-if="showDebug">
-          <el-tag>节点: {{ graphData.nodes.length }}</el-tag>
-          <el-tag type="success">连接: {{ graphData.links.length }}</el-tag>
-          <el-tag type="warning">过滤后节点: {{ filteredGraphData.nodes.length }}</el-tag>
-          <el-tag type="danger">过滤后连接: {{ filteredGraphData.links.length }}</el-tag>
+          <el-tag>总节点: {{ graphData.nodes.length }}</el-tag>
+          <el-tag type="success">总连接: {{ graphData.links.length }}</el-tag>
+          <el-tag type="warning">当前显示: {{ filteredGraphData.nodes.length }}</el-tag>
+          <el-tag type="info">已展开: {{ expandedNodes.size }}</el-tag>
+        </div>
+
+        <div class="graph-legend">
+          <div class="legend-item">
+            <svg class="legend-symbol" viewBox="0 0 20 20">
+              <polygon points="10,2 18,18 2,18" fill="#67c23a" stroke="#fff" stroke-width="2"/>
+            </svg>
+            <span>章节节点</span>
+          </div>
+          <div class="legend-item">
+            <svg class="legend-symbol" viewBox="0 0 20 20">
+              <circle cx="10" cy="10" r="8" fill="#409eff" stroke="#fff" stroke-width="2"/>
+            </svg>
+            <span>知识点</span>
+          </div>
+          <div class="legend-item">
+            <svg class="legend-symbol" viewBox="0 0 20 20">
+              <rect x="2" y="6" width="16" height="12" rx="3" fill="#e6a23c" stroke="#fff" stroke-width="2"/>
+            </svg>
+            <span>学习资源</span>
+          </div>
         </div>
       </div>
     </el-card>
 
-    <!-- 节点详情弹窗 -->
     <el-dialog v-model="nodeDetailVisible" :title="selectedNode?.name" width="600px">
       <div v-if="selectedNode" class="node-detail">
         <el-descriptions :column="2" border>
@@ -93,23 +93,23 @@
           <el-descriptions-item v-if="selectedNode.description" label="描述" :span="2">
             {{ selectedNode.description }}
           </el-descriptions-item>
+
+          <el-descriptions-item v-if="selectedNode.meta?.connectionCount !== undefined" label="关联知识点">
+            {{ selectedNode.meta.connectionCount }} 个
+          </el-descriptions-item>
         </el-descriptions>
 
-        <!-- 相关资源 -->
         <div v-if="selectedNode.relatedResources && selectedNode.relatedResources.length" class="related-resources">
           <h4>相关资源</h4>
           <el-space wrap>
             <el-tag v-for="resource in selectedNode.relatedResources" :key="resource.id" type="info"
               @click="openResource(resource)" style="cursor: pointer;">
-              <el-icon>
-                <Document />
-              </el-icon>
+              <el-icon><Document /></el-icon>
               {{ resource.filename }}
             </el-tag>
           </el-space>
         </div>
 
-        <!-- 前置知识点 -->
         <div v-if="selectedNode.prerequisites && selectedNode.prerequisites.length" class="prerequisites">
           <h4>前置知识点</h4>
           <el-space wrap>
@@ -120,7 +120,6 @@
           </el-space>
         </div>
 
-        <!-- 学习建议 -->
         <div v-if="selectedNode.suggestions && selectedNode.suggestions.length" class="learning-suggestions">
           <h4>学习建议</h4>
           <ul>
@@ -134,7 +133,7 @@
       <template #footer>
         <el-button @click="nodeDetailVisible = false">关闭</el-button>
         <el-button v-if="selectedNode?.category === 'resource'" type="primary" @click="openResource(selectedNode)">
-          查看资源
+          下载资源
         </el-button>
         <el-button v-else type="primary" @click="startLearning(selectedNode)">
           开始学习
@@ -153,7 +152,9 @@ import {
   ZoomOut,
   Refresh,
   Document,
-  Position
+  Position,
+  Expand,
+  Fold
 } from '@element-plus/icons-vue';
 import {
   getGraphData,
@@ -161,125 +162,173 @@ import {
   type GraphLink,
   type GraphData,
   type Resource,
-  recommendResourcesForConcept
+  recommendResourcesForConcept,
+  downloadResource
 } from '@/api/knowledgeGraph';
 
-/* ---------- 响应式 ---------- */
+/* ---------- 响应式状态 ---------- */
 const graphCanvas = ref<HTMLElement>();
 let chart: echarts.ECharts | null = null;
-const selectedChapter = ref('');
-const selectedStatus = ref('');
-const selectedType = ref('');
 const nodeDetailVisible = ref(false);
 const selectedNode = ref<GraphNode | null>(null);
 const forceLayout = ref(true);
-const chapters = ref<string[]>([]);
 const graphData = ref<GraphData>({ nodes: [], links: [] });
-const showDebug = ref(true); // ✅ 显示调试信息
+const showDebug = ref(true);
 
-/* ---------- 数据获取(调后端) ---------- */
+// 用于记录已展开的节点ID
+const expandedNodes = ref(new Set<string>());
+
+// 添加状态标记是否已展开所有节点
+const isAllExpanded = ref(false);
+
+// 添加单击/双击处理相关的变量
+let clickTimer: number | null = null;
+let lastClickTime = 0;
+const CLICK_DELAY = 300; // 单击延迟时间（毫秒）
+
+/* ---------- 计算属性 ---------- */
+const filteredGraphData = computed(() => {
+  // 初始只显示章节节点，或者已展开的节点
+  const chapterNodes = graphData.value.nodes.filter(n => n.category === 'chapter');
+  const expandedNodeIds = expandedNodes.value;
+  
+  // 包含所有章节节点 + 已展开的节点
+  const visibleNodeIds = new Set([
+    ...chapterNodes.map(n => n.id),
+    ...Array.from(expandedNodeIds)
+  ]);
+
+  // 过滤节点
+  const nodes = graphData.value.nodes.filter(n => visibleNodeIds.has(n.id));
+  
+  // 过滤连接：只显示两个端点都可见的连接
+  const links = graphData.value.links.filter(l =>
+    visibleNodeIds.has(l.source as string) && visibleNodeIds.has(l.target as string)
+  );
+
+  return { nodes, links };
+});
+
+/* ---------- 数据加载 ---------- */
 const loadGraphData = async () => {
   try {
     const data = await getGraphData();
-
-    // ✅ 终极容错：确保 nodes 和 links 永远是数组
     graphData.value = {
       nodes: Array.isArray(data?.nodes) ? data.nodes : [],
       links: Array.isArray(data?.links) ? data.links : []
     };
 
-    // 🔍 关键调试信息
-    console.log('📊 图谱数据摘要:', {
-      节点总数: graphData.value.nodes.length,
-      连接总数: graphData.value.links.length,
-      章节数: new Set(graphData.value.nodes.map(n => n.chapter).filter(Boolean)).size,
-      节点类型分布: Object.fromEntries(
-        ['chapter', 'concept', 'resource', 'student', 'learningrecord'].map(t => [
-          t,
-          graphData.value.nodes.filter(n => n.category === t).length
-        ])
-      ),
-      连接样本: graphData.value.links.slice(0, 5),
-      孤立节点数: graphData.value.nodes.filter(n =>
-        !graphData.value.links.some(l => l.source === n.id || l.target === n.id)
-      ).length
-    });
+    // 初始展开所有章节节点
+    const chapterNodeIds = graphData.value.nodes
+      .filter(n => n.category === 'chapter')
+      .map(n => n.id);
+    
+    chapterNodeIds.forEach(id => expandedNodes.value.add(id));
+    
+    // 重置展开状态
+    isAllExpanded.value = false;
 
-    // 如果没有连线，立即提示
-    if (graphData.value.links.length === 0) {
-      ElMessage.warning('未获取到有效的节点连接关系，请检查后端数据');
+    if (graphData.value.nodes.length === 0) {
+      ElMessage.warning('后端返回数据为空');
     } else {
       ElMessage.success(`加载成功：${graphData.value.nodes.length}个节点，${graphData.value.links.length}条连接`);
     }
-
-    const chapterSet = new Set(graphData.value.nodes.map(n => n.chapter).filter(Boolean));
-    chapters.value = Array.from(chapterSet) as string[];
-
-    if (graphData.value.nodes.length === 0) {
-      ElMessage.warning('后端返回数据为空，显示空图谱');
-    }
-
   } catch (e: any) {
     console.error('❌ 加载失败:', e);
     ElMessage.error(`图谱数据加载失败: ${e.message}`);
-
-    // 降级方案
     graphData.value = { nodes: [], links: [] };
   }
 };
 
-/* ---------- 资源加载 ---------- */
 const loadResources = async (conceptName: string) => {
   if (!conceptName) return;
   try {
     const list = await recommendResourcesForConcept(conceptName);
-    selectedNode.value!.relatedResources = list;
+    if (selectedNode.value) {
+      selectedNode.value.relatedResources = list;
+    }
   } catch (e) {
     ElMessage.error('资源加载失败');
   }
 };
 
-/* ---------- 过滤 & 图表 ---------- */
-const filteredGraphData = computed(() => {
-  let nodes = [...graphData.value.nodes];
-  let links = [...graphData.value.links];
-
-  if (selectedChapter.value)
-    nodes = nodes.filter(n => n.chapter === selectedChapter.value);
-
-  if (selectedStatus.value)
-    nodes = nodes.filter(n => n.status === selectedStatus.value);
-
-  if (selectedType.value)
-    nodes = nodes.filter(n => n.category === selectedType.value);
-
-  // 根据过滤后的节点重新筛选连接
-  const nodeIds = new Set(nodes.map(n => n.id));
-  links = links.filter(l =>
-    nodeIds.has(l.source as string) && nodeIds.has(l.target as string)
+/* ---------- 节点展开功能 ---------- */
+// 展开单个节点的相邻节点
+const expandNodeNeighbors = (nodeId: string) => {
+  // 找到与当前节点相连的所有连接
+  const connectedLinks = graphData.value.links.filter(link => 
+    link.source === nodeId || link.target === nodeId
   );
 
-  console.log('🔄 过滤后数据:', {
-    原始节点: graphData.value.nodes.length,
-    过滤后节点: nodes.length,
-    原始连接: graphData.value.links.length,
-    过滤后连接: links.length
+  // 获取相邻节点的ID
+  const neighborIds = new Set<string>();
+  connectedLinks.forEach(link => {
+    if (link.source === nodeId) {
+      neighborIds.add(link.target as string);
+    } else {
+      neighborIds.add(link.source as string);
+    }
   });
 
-  return { nodes, links };
-});
+  // 添加到已展开节点集合
+  neighborIds.forEach(id => expandedNodes.value.add(id));
+  
+  // 添加当前节点（确保它也被显示）
+  expandedNodes.value.add(nodeId);
+  
+  // 检查是否已展开所有节点
+  checkAllExpanded();
 
+  console.log(`🔍 展开节点 ${nodeId} 的 ${neighborIds.size} 个相邻节点`);
+};
+
+// 检查是否已展开所有节点
+const checkAllExpanded = () => {
+  const allNodeIds = new Set(graphData.value.nodes.map(n => n.id));
+  isAllExpanded.value = expandedNodes.value.size === allNodeIds.size;
+};
+
+// 切换所有节点的展开/收起状态
+const toggleAllNodes = () => {
+  if (isAllExpanded.value) {
+    // 如果已展开全部，则收起所有节点（只显示章节节点）
+    const chapterNodeIds = graphData.value.nodes
+      .filter(n => n.category === 'chapter')
+      .map(n => n.id);
+    
+    expandedNodes.value = new Set(chapterNodeIds);
+    isAllExpanded.value = false;
+    updateChart();
+    ElMessage.success('已收起所有节点，仅显示章节节点');
+  } else {
+    // 如果未展开全部，则展开所有节点
+    const allNodeIds = graphData.value.nodes.map(n => n.id);
+    expandedNodes.value = new Set(allNodeIds);
+    isAllExpanded.value = true;
+    updateChart();
+    ElMessage.success(`已展开所有 ${allNodeIds.length} 个节点`);
+  }
+};
+
+// 一键展开所有节点（保持向后兼容）
+const expandAllNodes = () => {
+  if (!isAllExpanded.value) {
+    toggleAllNodes();
+  }
+};
+
+/* ---------- 图表控制 ---------- */
 const initChart = () => {
   if (!graphCanvas.value) return;
 
-  // 再次验证数据
-  if (filteredGraphData.value.links.length === 0) {
-    console.warn('⚠️ 当前过滤条件下没有连接数据！');
-  }
-
   chart = echarts.init(graphCanvas.value);
+  updateChart();
+};
+
+// 分离图表配置更新函数
+const updateChart = () => {
+  if (!chart) return;
   
-  // ✅ 优化后的ECharts配置
   const option = {
     tooltip: {
       formatter: (params: any) => {
@@ -291,9 +340,9 @@ const initChart = () => {
             <div>状态：${getStatusText(node.status)}</div>
             ${node.progress !== undefined ? `<div>进度：${node.progress}%</div>` : ''}
             ${node.chapter ? `<div>章节：${node.chapter}</div>` : ''}
+            ${node.category === 'chapter' ? '<div style="color:#67c23a;font-size:12px">(双击展开相关节点)</div>' : ''}
           </div>`;
         } else if (params.dataType === 'edge') {
-          // ✅ 显示连接关系信息
           return `<div style="text-align:left">
             <div style="font-weight:bold">关系类型</div>
             <div>${params.data.label || '相关'}</div>
@@ -306,14 +355,19 @@ const initChart = () => {
       type: 'graph',
       layout: forceLayout.value ? 'force' : 'circular',
       force: { 
-        repulsion: 300,      // ✅ 增加排斥力
-        gravity: 0.05,       // ✅ 降低重力
-        edgeLength: 150,     // ✅ 增加边长
+        repulsion: 300,
+        gravity: 0.05,
+        edgeLength: 150,
         layoutAnimation: true,
-        friction: 0.6        // ✅ 添加摩擦力
+        friction: 0.6
       },
       circular: { rotateLabel: true },
-      data: filteredGraphData.value.nodes,
+      data: filteredGraphData.value.nodes.map(node => ({
+        ...node,
+        symbolSize: getSymbolSize(node.category, node.status),
+        symbol: getSymbol(node.category),
+        itemStyle: getItemStyle(node.category, node.status)
+      })),
       links: filteredGraphData.value.links,
       categories: [
         { name: 'chapter', itemStyle: { color: '#67c23a' } },
@@ -324,24 +378,22 @@ const initChart = () => {
       ],
       roam: true,
       focusNodeAdjacency: true,
-      draggable: true,     // ✅ 允许拖拽
+      draggable: true,
       label: { 
         show: true, 
         position: 'right', 
         formatter: '{b}', 
         fontSize: 12 
       },
-      // ✅ 重要：确保边的样式配置正确
       lineStyle: { 
-        color: 'source',   // 使用源节点颜色
-        curveness: 0.2,    // 曲度
-        width: 2,          // 默认宽度
-        opacity: 0.7       // 透明度
+        color: 'source',
+        curveness: 0.2,
+        width: 2,
+        opacity: 0.7
       },
-      // ✅ 边的标签显示
       edgeLabel: {
-        show: false,       // 默认不显示，鼠标悬停时显示
-        formatter: '{c}'   // 显示关系类型
+        show: false,
+        formatter: '{c}'
       },
       emphasis: { 
         focus: 'adjacency',
@@ -350,42 +402,86 @@ const initChart = () => {
           opacity: 1
         },
         edgeLabel: {
-          show: true      // 高亮时显示标签
+          show: true
         }
       }
     }]
   };
   
-  chart.setOption(option);
+  chart.setOption(option, true);
 
-  // ✅ 添加更多事件监听
+  // 移除旧的事件监听器，避免重复绑定
+  chart.off('click');
+  chart.off('dblclick');
+
+  // 处理节点点击事件（区分单击和双击）
   chart.on('click', (params: any) => {
     if (params.dataType === 'node') {
-      showNodeDetail(params.data as GraphNode);
-    } else if (params.dataType === 'edge') {
-      console.log('点击了连接:', params.data);
+      const currentTime = new Date().getTime();
+      
+      // 如果是双击的一部分，不处理单击
+      if (currentTime - lastClickTime < CLICK_DELAY) {
+        if (clickTimer !== null) {
+          clearTimeout(clickTimer);
+          clickTimer = null;
+        }
+        return;
+      }
+      
+      lastClickTime = currentTime;
+      
+      // 设置延迟处理单击事件
+      clickTimer = window.setTimeout(() => {
+        showNodeDetail(params.data as GraphNode);
+        clickTimer = null;
+      }, CLICK_DELAY);
     }
   });
   
+  // 处理节点双击事件
   chart.on('dblclick', (params: any) => {
-    if (params.dataType === 'node') focusNode(params.data.id);
+    if (params.dataType === 'node') {
+      // 清除单击定时器
+      if (clickTimer !== null) {
+        clearTimeout(clickTimer);
+        clickTimer = null;
+      }
+      
+      const node = params.data as GraphNode;
+      expandNodeNeighbors(node.id);
+      updateChart();
+      ElMessage.info(`已展开与"${node.name}"相关的节点`);
+    }
   });
 };
 
+// 更新图表数据和布局
 const updateGraph = () => {
-  if (!chart) return;
-  
-  console.log('🔄 更新图表, 连接数:', filteredGraphData.value.links.length);
-  
-  chart.setOption({
-    series: [{
-      data: filteredGraphData.value.nodes,
-      links: filteredGraphData.value.links,
-      layout: forceLayout.value ? 'force' : 'circular'
-    }]
-  });
+  updateChart();
 };
 
+/* ---------- 辅助函数 ---------- */
+const getSymbolSize = (category: string, status?: string) => {
+  const baseSize = { mastered: 50, learning: 40, unlearned: 35 }[status as string] || 35;
+  const multiplier = { resource: 0.8, concept: 1.0, chapter: 1.2, student: 0.9, learningrecord: 0.7 }[category] || 1.0;
+  const size = Math.round(baseSize * multiplier);
+  return category === 'resource' ? [40, 32] : size;
+};
+
+const getSymbol = (category: string) => {
+  return { concept: 'circle', resource: 'rect', chapter: 'triangle', student: 'diamond', learningrecord: 'pin' }[category] || 'circle';
+};
+
+const getItemStyle = (category: string, status?: string) => {
+  const statusColor = { mastered: '#67c23a', learning: '#e6a23c', unlearned: '#909399' }[status as string] || '#909399';
+  return { 
+    color: statusColor, 
+    borderWidth: category === 'resource' ? 2 : 0, 
+    borderColor: '#fff' 
+  };
+};
+
+/* ---------- 功能函数 ---------- */
 const getNodeTypeTag = (type: string) => ({ concept: 'success', resource: 'info', chapter: 'warning' }[type] || 'info');
 const getNodeTypeText = (type: string) => ({ concept: '知识点', resource: '学习资源', chapter: '章节' }[type] || '节点');
 const getStatusTag = (status: string) => ({ mastered: 'success', learning: 'warning', unlearned: 'info' }[status] || 'info');
@@ -400,45 +496,101 @@ const showNodeDetail = (node: GraphNode) => {
 const focusNode = (nodeId: string) => {
   if (!chart) return;
 
-  // 在过滤后的数据中查找索引
   const filteredNodes = filteredGraphData.value.nodes;
   const dataIndex = filteredNodes.findIndex(n => n.id === nodeId);
 
-  if (dataIndex === -1) return; // 如果被过滤了就不聚焦
+  if (dataIndex === -1) return;
 
   chart.dispatchAction({
     type: 'focusNodeAdjacency',
-    dataIndex: dataIndex  // 使用过滤后的正确索引
+    dataIndex: dataIndex
   });
 };
 
-const openResource = (resource: Resource | GraphNode) => {
-  // 类型守卫：明确区分两种类型
-  const resourceName = 'filename' in resource
-    ? resource.filename  // Resource类型
-    : resource.name;     // GraphNode类型
+const openResource = async (resource: Resource | GraphNode) => {
+  let downloadUrl = '';
+  
+  try {
+    const resourceId = 'resourceId' in resource && resource.resourceId 
+      ? resource.resourceId 
+      : resource.id;
+    
+    if (!resourceId) {
+      throw new Error('资源ID无效或为空');
+    }
 
-  ElMessage.success(`打开资源: ${resourceName}`);
+    let filename: string;
+    if ('filename' in resource && resource.filename) {
+      filename = resource.filename;
+    } else if ('name' in resource && resource.name) {
+      filename = resource.name;
+    } else {
+      filename = `resource_${resourceId}`;
+    }
+
+    const loadingInstance = ElMessage({
+      message: '正在下载文件...',
+      duration: 0,
+      type: 'info'
+    });
+
+    const result = await downloadResource(resourceId);
+    const blob = result.data;
+    
+    if (result.filename && result.filename !== `resource_${resourceId}`) {
+      filename = result.filename;
+    }
+    
+    downloadUrl = URL.createObjectURL(blob);
+    
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = filename;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    setTimeout(() => {
+      URL.revokeObjectURL(downloadUrl);
+    }, 3000);
+    
+    loadingInstance.close();
+    ElMessage.success(`已开始下载: ${filename}`);
+    
+  } catch (error) {
+    console.error('❌ 下载失败:', error);
+    const errorMessage = error instanceof Error ? error.message : '未知错误';
+    ElMessage.error(`下载失败: ${errorMessage}`);
+    
+    if (downloadUrl) {
+      URL.revokeObjectURL(downloadUrl);
+    }
+  }
 };
 
 const startLearning = (node: GraphNode) => {
   ElMessage.success(`开始学习: ${node.name}`);
 };
 
-const zoomIn = () => chart?.dispatchAction({ type: 'dataZoom', zoom: 1.2 });
-const zoomOut = () => chart?.dispatchAction({ type: 'dataZoom', zoom: 0.8 });
+const zoomIn = () => chart?.dispatchAction({ type: 'zoomIn' });
+const zoomOut = () => chart?.dispatchAction({ type: 'zoomOut' });
 
 const resetView = () => {
-  selectedChapter.value = '';
-  selectedStatus.value = '';
-  selectedType.value = '';
-  updateGraph();
-  ElMessage.success('视图已重置');
+  // 重置时只显示章节节点
+  const chapterNodeIds = graphData.value.nodes
+    .filter(n => n.category === 'chapter')
+    .map(n => n.id);
+  
+  expandedNodes.value = new Set(chapterNodeIds);
+  isAllExpanded.value = false;
+  updateChart();
+  ElMessage.success('视图已重置，仅显示章节节点');
 };
 
 const toggleForceLayout = () => {
   forceLayout.value = !forceLayout.value;
-  updateGraph();
+  updateChart();
 };
 
 const handleResize = () => chart?.resize();
@@ -446,12 +598,16 @@ const handleResize = () => chart?.resize();
 /* ---------- 生命周期 ---------- */
 onMounted(async () => {
   await nextTick();
-  await loadGraphData();   // ① 拿数据
-  initChart();             // ② 画图
+  await loadGraphData();
+  initChart();
   window.addEventListener('resize', handleResize);
 });
 
 onUnmounted(() => {
+  // 清理定时器
+  if (clickTimer !== null) {
+    clearTimeout(clickTimer);
+  }
   chart?.dispose();
   window.removeEventListener('resize', handleResize);
 });
@@ -477,10 +633,7 @@ onUnmounted(() => {
   padding: 15px;
   background: white;
   border-bottom: 1px solid #e4e7ed;
-}
-
-.filter-controls {
-  display: flex;
+  flex-wrap: wrap;
   gap: 10px;
 }
 
@@ -489,10 +642,9 @@ onUnmounted(() => {
   height: 600px;
 }
 
-/* ✅ 调试信息样式 */
 .debug-info {
   position: absolute;
-  top: 70px;
+  top: 580px;
   right: 20px;
   display: flex;
   flex-direction: column;
@@ -502,6 +654,30 @@ onUnmounted(() => {
   border-radius: 4px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   z-index: 10;
+}
+
+.graph-legend {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  z-index: 10;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.legend-symbol {
+  width: 20px;
+  height: 20px;
+  margin-right: 8px;
 }
 
 .node-detail {

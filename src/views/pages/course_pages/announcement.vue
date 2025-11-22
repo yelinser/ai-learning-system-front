@@ -20,7 +20,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref } from 'vue';
 // 示例数据，可替换为接口获取
 const coverUrl = ref('https://cdn.jsdelivr.net/gh/realwds/images/cover-demo.jpg');

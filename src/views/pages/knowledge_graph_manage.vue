@@ -12,6 +12,12 @@
         <el-button @click="refreshGraphData">
           <el-icon><Refresh /></el-icon>刷新数据
         </el-button>
+        <el-button @click="toggleDragMode" :type="dragMode ? 'success' : ''">
+          <el-icon><Position /></el-icon>{{ dragMode ? '退出拖拽模式' : '进入拖拽模式' }}
+        </el-button>
+        <el-button @click="resetToInitialView" type="warning">
+          <el-icon><RefreshLeft /></el-icon>重置视图
+        </el-button>
       </div>
     </div>
 
@@ -34,6 +40,11 @@
                     <el-icon><Refresh /></el-icon>
                   </el-button>
                 </el-button-group>
+                <div v-if="dragMode" class="drag-mode-indicator">
+                  <el-tag type="success" size="small">
+                    <el-icon><Position /></el-icon>拖拽模式已启用
+                  </el-tag>
+                </div>
               </div>
             </div>
           </template>
@@ -62,20 +73,6 @@
                     <el-icon><Search /></el-icon>
                   </template>
                 </el-input>
-                
-                <el-select
-                  v-model="selectedNodeType"
-                  placeholder="节点类型"
-                  clearable
-                  @change="filterNodes"
-                  style="width: 120px;"
-                >
-                  <el-option label="全部类型" value=""></el-option>
-                  <el-option label="概念节点" value="Concept"></el-option>
-                  <el-option label="资源节点" value="Resource"></el-option>
-                  <el-option label="学生节点" value="Student"></el-option>
-                  <el-option label="学习记录" value="LearningRecord"></el-option>
-                </el-select>
               </div>
             </div>
           </template>
@@ -113,11 +110,11 @@
                 </div>
                 <div class="node-properties">
                   <div
-                    v-for="(value, key) in node.properties"
+                    v-for="(value, key) in getDisplayProperties(node)"
                     :key="key"
                     class="property-item"
                   >
-                    <span class="property-key">{{ key }}:</span>
+                    <span class="property-key">{{ getPropertyLabel(key) }}:</span>
                     <span class="property-value">{{ formatPropertyValue(value) }}</span>
                   </div>
                 </div>
@@ -144,8 +141,7 @@
           <el-select v-model="addNodeForm.type" placeholder="选择节点类型">
             <el-option label="概念节点" value="Concept"></el-option>
             <el-option label="资源节点" value="Resource"></el-option>
-            <el-option label="学生节点" value="Student"></el-option>
-            <el-option label="学习记录" value="LearningRecord"></el-option>
+            <el-option label="章节节点" value="Chapter"></el-option>
           </el-select>
         </el-form-item>
 
@@ -163,41 +159,9 @@
           />
         </el-form-item>
 
-        <!-- 学生节点字段 -->
-        <el-form-item v-if="addNodeForm.type === 'Student'" label="学生ID" required>
-          <el-input v-model="addNodeForm.studentId" placeholder="请输入学生ID" />
-        </el-form-item>
-
-        <el-form-item v-if="addNodeForm.type === 'Student'" label="学生姓名" required>
-          <el-input v-model="addNodeForm.studentName" placeholder="请输入学生姓名" />
-        </el-form-item>
-
-        <!-- 学习记录字段 -->
-        <el-form-item v-if="addNodeForm.type === 'LearningRecord'" label="学生ID" required>
-          <el-input v-model="addNodeForm.learningRecordStudentId" placeholder="请输入学生ID" />
-        </el-form-item>
-
-        <el-form-item v-if="addNodeForm.type === 'LearningRecord'" label="概念名称" required>
-          <el-input v-model="addNodeForm.conceptName" placeholder="请输入概念名称" />
-        </el-form-item>
-
-        <el-form-item v-if="addNodeForm.type === 'LearningRecord'" label="学习状态" required>
-          <el-select v-model="addNodeForm.status" placeholder="选择学习状态">
-            <el-option label="已完成" value="completed"></el-option>
-            <el-option label="未开始" value="not_started"></el-option>
-            <el-option label="进行中" value="in_progress"></el-option>
-          </el-select>
-        </el-form-item>
-
-        <el-form-item v-if="addNodeForm.type === 'LearningRecord'" label="学习进度">
-          <el-slider
-            v-model="addNodeForm.progress"
-            :min="0"
-            :max="100"
-            :step="10"
-            show-stops
-          />
-          <span style="margin-left: 10px;">{{ addNodeForm.progress }}%</span>
+        <!-- 章节节点字段 -->
+        <el-form-item v-if="addNodeForm.type === 'Chapter'" label="章节名称" required>
+          <el-input v-model="addNodeForm.chapterName" placeholder="请输入章节名称" />
         </el-form-item>
 
         <!-- 资源节点字段 -->
@@ -292,8 +256,8 @@
             <el-option label="依赖" value="DEPENDS_ON"></el-option>
             <el-option label="关联" value="RELATED_TO"></el-option>
             <el-option label="属于" value="BELONGS_TO"></el-option>
-            <el-option label="学习" value="HAS_LEARNED"></el-option>
-            <el-option label="拥有" value="HAS"></el-option>
+            <el-option label="关键字" value="HAS_KEYWORD"></el-option>
+            <el-option label="包含" value="INCLUDES"></el-option>
           </el-select>
         </el-form-item>
 
@@ -332,7 +296,9 @@ import {
   Delete,
   Connection,
   Upload,
-  Document
+  Document,
+  Position,
+  RefreshLeft
 } from '@element-plus/icons-vue'
 
 // 类型定义
@@ -340,6 +306,9 @@ interface GraphNode {
   id: string
   labels: string[]
   properties: Record<string, any>
+  x?: number
+  y?: number
+  fixed?: boolean
 }
 
 interface GraphRelationship {
@@ -355,24 +324,19 @@ interface GraphData {
   relationships: GraphRelationship[]
 }
 
-interface UploadFile {
-  name: string
-  size: number
-  type: string
-}
-
 // 响应式数据
 const graphCanvas = ref<HTMLElement>()
-const nodesListContainer = ref<HTMLElement>()  // 添加节点列表容器的ref
+const nodesListContainer = ref<HTMLElement>()
 let chart: echarts.ECharts | null = null
 const graphData = ref<GraphData>({ nodes: [], relationships: [] })
 const allNodes = ref<GraphNode[]>([])
 const filteredNodes = ref<GraphNode[]>([])
 const selectedNodeId = ref<string>('')
 const searchKeyword = ref('')
-const selectedNodeType = ref('')
 const uploadRef = ref()
 const selectedFile = ref<File | null>(null)
+const dragMode = ref(false) // 拖拽模式状态
+const nodePositions = ref<Map<string, { x: number; y: number; fixed: boolean }>>(new Map()) // 保存节点位置
 
 // 添加节点refs映射
 const nodeRefs = ref<Map<string, HTMLElement>>(new Map())
@@ -382,18 +346,15 @@ const showAddRelationshipDialog = ref(false)
 const addingNode = ref(false)
 const addingRelationship = ref(false)
 
+// 当前可见的节点ID集合
+const visibleNodeIds = ref<Set<string>>(new Set())
+
 // 表单数据
 const addNodeForm = ref({
   type: '',
   name: '',
   description: '',
-  studentId: '',
-  studentName: '',
-  learningRecordStudentId: '',
-  conceptName: '',
-  status: 'not_started',
-  progress: 0,
-  // 资源节点字段
+  chapterName: '',
   course: '',
   chapter: '',
   title: '',
@@ -408,6 +369,31 @@ const addRelationshipForm = ref({
   target: ''
 })
 
+// 定义每种节点类型应该显示的属性
+const nodeDisplayProperties = {
+  Resource: ['title', 'course', 'chapter', 'author', 'keyword', 'file_type', 'file_size', 'upload_time'],
+  Concept: ['name', 'description'],
+  Chapter: ['name']
+}
+
+// 定义属性标签映射（将属性键转换为更友好的中文标签）
+const propertyLabels: Record<string, string> = {
+  'title': '标题',
+  'course': '课程',
+  'chapter': '章节',
+  'author': '作者',
+  'keyword': '关键词',
+  'file_type': '文件类型',
+  'file_size': '文件大小',
+  'upload_time': '上传时间',
+  'name': '名称',
+  'description': '描述',
+  'student_id': '学号',
+  'student_name': '学生姓名',
+  'status': '状态',
+  'progress': '进度'
+}
+
 const setNodeRef = (el: any) => {
   if (el && el.__vnode) {
     const nodeId = el.__vnode.key as string
@@ -418,14 +404,8 @@ const setNodeRef = (el: any) => {
 }
 
 // 计算属性
-const nodeTypeOptions = computed(() => {
-  const types = new Set(allNodes.value.map(node => node.labels[0]))
-  return Array.from(types)
-})
-
 const isResourceFormInvalid = computed(() => {
   if (addNodeForm.value.type !== 'Resource') return false
-  
   return !selectedFile.value || 
          !addNodeForm.value.course || 
          !addNodeForm.value.title
@@ -446,9 +426,20 @@ const loadGraphData = async () => {
     }
 
     const data = await response.json()
-    graphData.value = data
-    allNodes.value = data.nodes
-    filteredNodes.value = data.nodes
+    
+    // 过滤掉学生节点和学习记录节点
+    const filteredData = {
+      nodes: data.nodes.filter((node: GraphNode) => 
+        !node.labels.includes('Student') && !node.labels.includes('LearningRecord')
+      ),
+      relationships: data.relationships
+    }
+    
+    graphData.value = filteredData
+    allNodes.value = filteredData.nodes
+    
+    // 初始只显示章节节点
+    initializeVisibleNodes()
     
     initChart()
     ElMessage.success('数据加载成功')
@@ -456,6 +447,67 @@ const loadGraphData = async () => {
     console.error('加载知识图谱数据失败:', error)
     ElMessage.error('数据加载失败')
   }
+}
+
+// 获取应该显示的属性
+const getDisplayProperties = (node: GraphNode): Record<string, any> => {
+  const nodeType = node.labels[0]
+  const displayProps = nodeDisplayProperties[nodeType as keyof typeof nodeDisplayProperties] || []
+  const filteredProperties: Record<string, any> = {}
+  
+  displayProps.forEach(prop => {
+    if (node.properties[prop] !== undefined && node.properties[prop] !== null && node.properties[prop] !== '') {
+      filteredProperties[prop] = node.properties[prop]
+    }
+  })
+  
+  return filteredProperties
+}
+
+// 获取属性标签
+const getPropertyLabel = (propertyKey: string): string => {
+  return propertyLabels[propertyKey] || propertyKey
+}
+
+// 初始化可见节点（只显示章节节点）
+const initializeVisibleNodes = () => {
+  visibleNodeIds.value.clear()
+  // 添加所有章节节点
+  allNodes.value.forEach(node => {
+    if (node.labels.includes('Chapter')) {
+      visibleNodeIds.value.add(node.id)
+    }
+  })
+  filterNodes()
+}
+
+// 获取相邻节点（通过关系连接的节点）
+const getAdjacentNodes = (nodeId: string): Set<string> => {
+  const adjacentNodeIds = new Set<string>()
+  
+  graphData.value.relationships.forEach(relationship => {
+    if (relationship.start_node_id === nodeId) {
+      adjacentNodeIds.add(relationship.end_node_id)
+    }
+    if (relationship.end_node_id === nodeId) {
+      adjacentNodeIds.add(relationship.start_node_id)
+    }
+  })
+  
+  return adjacentNodeIds
+}
+
+// 展开节点（显示该节点及其相邻节点）
+const expandNode = (nodeId: string) => {
+  const adjacentNodes = getAdjacentNodes(nodeId)
+  
+  // 添加当前节点和相邻节点到可见集合
+  visibleNodeIds.value.add(nodeId)
+  adjacentNodes.forEach(adjacentId => {
+    visibleNodeIds.value.add(adjacentId)
+  })
+  
+  filterNodes()
 }
 
 const initChart = () => {
@@ -466,20 +518,67 @@ const initChart = () => {
   const categories = [
     { name: 'Concept' },
     { name: 'Resource' },
-    { name: 'Student' },
-    { name: 'LearningRecord' }
+    { name: 'Chapter' }
   ]
+
+  // 准备节点数据，只显示可见节点
+  const nodeData = filteredNodes.value.map(node => {
+    const nodeId = node.id
+    const savedPosition = nodePositions.value.get(nodeId)
+    
+    return {
+      id: node.id,
+      name: getNodeName(node),
+      category: node.labels[0],
+      symbolSize: getNodeSize(node.labels[0]),
+      itemStyle: {
+        color: getNodeColor(node.labels[0])
+      },
+      label: {
+        show: true,
+        position: 'right',
+        formatter: '{b}',
+        fontSize: 12
+      },
+      x: savedPosition?.x,
+      y: savedPosition?.y,
+      fixed: savedPosition?.fixed || false,
+      ...node
+    }
+  })
+
+  // 准备关系数据，只显示两个端点都可见的关系
+  const visibleRelationships = graphData.value.relationships.filter(rel => 
+    visibleNodeIds.value.has(rel.start_node_id) && visibleNodeIds.value.has(rel.end_node_id)
+  )
 
   const option = {
     tooltip: {
+      trigger: 'item',
       formatter: (params: any) => {
         if (params.dataType === 'node') {
           const node = params.data as GraphNode
+          const displayProperties = getDisplayProperties(node)
+          return `
+            <div style="text-align: left; max-width: 300px;">
+              <div style="font-weight: bold; margin-bottom: 8px; font-size: 14px; color: #409eff;">${getNodeName(node)}</div>
+              <div style="margin-bottom: 6px; font-size: 12px; color: #909399;">类型: ${getNodeTypeText(node.labels[0])}</div>
+              ${Object.entries(displayProperties).map(([key, value]) => 
+                `<div style="margin-bottom: 4px; font-size: 12px;">
+                  <span style="color: #606266; font-weight: 500;">${getPropertyLabel(key)}:</span>
+                  <span style="color: #303133;">${formatPropertyValue(value)}</span>
+                </div>`
+              ).join('')}
+            </div>
+          `
+        } else if (params.dataType === 'edge') {
+          const relationship = params.data.relationship
           return `
             <div style="text-align: left;">
-              <div style="font-weight: bold; margin-bottom: 5px;">${getNodeName(node)}</div>
-              <div>类型: ${getNodeTypeText(node.labels[0])}</div>
-              ${Object.entries(node.properties).map(([key, value]) => 
+              <div style="font-weight: bold; margin-bottom: 5px;">关系类型: ${getRelationshipLabel(relationship.type)}</div>
+              <div>起始节点: ${getNodeNameById(relationship.start_node_id)}</div>
+              <div>目标节点: ${getNodeNameById(relationship.end_node_id)}</div>
+              ${Object.entries(relationship.properties).map(([key, value]) => 
                 `<div>${key}: ${formatPropertyValue(value)}</div>`
               ).join('')}
             </div>
@@ -487,9 +586,6 @@ const initChart = () => {
         }
         return ''
       }
-    },
-    legend: {
-      data: categories.map(c => c.name)
     },
     series: [{
       type: 'graph',
@@ -500,34 +596,44 @@ const initChart = () => {
         edgeLength: 100,
         layoutAnimation: true
       },
-      data: graphData.value.nodes.map(node => ({
-        id: node.id,
-        name: getNodeName(node),
-        category: node.labels[0],
-        symbolSize: getNodeSize(node.labels[0]),
-        itemStyle: {
-          color: getNodeColor(node.labels[0])
-        },
-        label: {
-          show: true,
-          position: 'right',
-          formatter: '{b}',
-          fontSize: 12
-        },
-        ...node
-      })),
-      links: graphData.value.relationships.map(rel => ({
+      data: nodeData,
+      links: visibleRelationships.map(rel => ({
         source: rel.start_node_id,
         target: rel.end_node_id,
+        relationship: rel,
         lineStyle: {
           color: '#aaa',
           width: 2,
           curveness: 0.3
         },
         label: {
-          show: true,
-          formatter: rel.type,
-          fontSize: 10
+          show: false,
+          formatter: getRelationshipLabel(rel.type),
+          fontSize: 10,
+          backgroundColor: '#fff',
+          borderColor: '#ddd',
+          borderWidth: 1,
+          borderRadius: 4,
+          padding: [4, 6],
+          color: '#333'
+        },
+        emphasis: {
+          lineStyle: {
+            width: 3,
+            color: '#409eff'
+          },
+          label: {
+            show: true,
+            formatter: getRelationshipLabel(rel.type),
+            fontSize: 10,
+            fontWeight: 'normal',
+            backgroundColor: '#fff',
+            color: '#333',
+            borderColor: '#ddd',
+            borderWidth: 1,
+            borderRadius: 4,
+            padding: [4, 6]
+          }
         }
       })),
       categories: categories,
@@ -542,7 +648,12 @@ const initChart = () => {
         lineStyle: {
           width: 4
         }
-      }
+      },
+      edgeLabel: {
+        show: false
+      },
+      // 启用拖拽功能
+      draggable: dragMode.value
     }]
   }
 
@@ -554,17 +665,119 @@ const initChart = () => {
       selectNode(params.data)
     }
   })
+
+  // 添加双击事件（展开节点）
+  chart.on('dblclick', (params: any) => {
+    if (params.dataType === 'node') {
+      expandNode(params.data.id)
+    }
+  })
+
+  // 添加拖拽事件监听
+  chart.on('drag', (params: any) => {
+    if (params.dataType === 'node') {
+      // 保存节点位置
+      const nodeId = params.data.id
+      const position = {
+        x: params.data.x,
+        y: params.data.y,
+        fixed: true // 拖拽后固定位置
+      }
+      nodePositions.value.set(nodeId, position)
+    }
+  })
+
+  // 拖拽结束事件
+  chart.on('dragend', (params: any) => {
+    if (params.dataType === 'node') {
+      ElMessage.success('节点位置已更新')
+    }
+  })
+
+  // 鼠标悬停事件
+  chart.on('mouseover', (params: any) => {
+    if (params.dataType === 'edge') {
+      chart.dispatchAction({
+        type: 'highlight',
+        edgeIndex: params.dataIndex
+      })
+    }
+  })
+
+  chart.on('mouseout', (params: any) => {
+    if (params.dataType === 'edge') {
+      chart.dispatchAction({
+        type: 'downplay',
+        edgeIndex: params.dataIndex
+      })
+    }
+  })
+}
+
+// 切换拖拽模式
+const toggleDragMode = () => {
+  dragMode.value = !dragMode.value
+  
+  if (chart) {
+    // 更新图表选项，启用或禁用拖拽
+    chart.setOption({
+      series: [{
+        draggable: dragMode.value
+      }]
+    })
+    
+    if (dragMode.value) {
+      ElMessage.success('拖拽模式已启用，可以拖动节点调整位置')
+    } else {
+      ElMessage.info('已退出拖拽模式')
+    }
+  }
+}
+
+// 重置所有节点位置
+const resetNodePositions = () => {
+  nodePositions.value.clear()
+  if (chart) {
+    initChart()
+    ElMessage.success('节点位置已重置')
+  }
+}
+
+// 重置到初始视图（只显示章节节点）
+const resetToInitialView = () => {
+  initializeVisibleNodes()
+  if (chart) {
+    initChart()
+  }
+  ElMessage.success('已重置到初始视图')
+}
+
+// 根据关系类型获取显示标签
+const getRelationshipLabel = (type: string): string => {
+  const labelMap: Record<string, string> = {
+    'CONTAINS': '包含',
+    'DEPENDS_ON': '依赖',
+    'RELATED_TO': '关联',
+    'BELONGS_TO': '属于',
+    'HAS_KEYWORD': '关键字',
+    'INCLUDES': '包含'
+  }
+  return labelMap[type] || type
+}
+
+// 添加根据节点ID获取节点名称的辅助函数
+const getNodeNameById = (nodeId: string): string => {
+  const node = allNodes.value.find(n => n.id === nodeId)
+  return node ? getNodeName(node) : '未知节点'
 }
 
 const getNodeName = (node: GraphNode): string => {
   if (node.labels.includes('Concept')) {
     return node.properties.name || '未命名概念'
-  } else if (node.labels.includes('Student')) {
-    return node.properties.name || node.properties.id || '未命名学生'
   } else if (node.labels.includes('Resource')) {
     return node.properties.title || node.properties.filename || '未命名资源'
-  } else if (node.labels.includes('LearningRecord')) {
-    return `学习记录-${node.id.slice(-6)}`
+  } else if (node.labels.includes('Chapter')) {
+    return node.properties.name || '未命名章节'
   }
   return node.id
 }
@@ -573,8 +786,7 @@ const getNodeTypeText = (type: string): string => {
   const typeMap: Record<string, string> = {
     'Concept': '概念节点',
     'Resource': '资源节点',
-    'Student': '学生节点',
-    'LearningRecord': '学习记录'
+    'Chapter': '章节节点'
   }
   return typeMap[type] || type
 }
@@ -583,8 +795,7 @@ const getNodeTypeTag = (type: string): string => {
   const tagMap: Record<string, string> = {
     'Concept': 'success',
     'Resource': 'info',
-    'Student': 'warning',
-    'LearningRecord': 'primary'
+    'Chapter': 'danger'
   }
   return tagMap[type] || 'info'
 }
@@ -593,8 +804,7 @@ const getNodeColor = (type: string): string => {
   const colorMap: Record<string, string> = {
     'Concept': '#67c23a',
     'Resource': '#409eff',
-    'Student': '#e6a23c',
-    'LearningRecord': '#909399'
+    'Chapter': '#f56c6c'
   }
   return colorMap[type] || '#909399'
 }
@@ -603,8 +813,7 @@ const getNodeSize = (type: string): number => {
   const sizeMap: Record<string, number> = {
     'Concept': 40,
     'Resource': 35,
-    'Student': 45,
-    'LearningRecord': 30
+    'Chapter': 50
   }
   return sizeMap[type] || 30
 }
@@ -615,6 +824,9 @@ const formatPropertyValue = (value: any): string => {
   }
   if (typeof value === 'object') {
     return JSON.stringify(value)
+  }
+  if (typeof value === 'string' && value.length > 50) {
+    return value.substring(0, 50) + '...'
   }
   return String(value)
 }
@@ -629,17 +841,16 @@ const formatFileSize = (bytes: number): string => {
 
 const selectNode = async (node: GraphNode) => {
   selectedNodeId.value = node.id
-  // 在图表中高亮选中的节点
   if (chart) {
-    chart.dispatchAction({
-      type: 'focusNodeAdjacency',
-      dataIndex: graphData.value.nodes.findIndex(n => n.id === node.id)
-    })
+    const nodeIndex = filteredNodes.value.findIndex(n => n.id === node.id)
+    if (nodeIndex !== -1) {
+      chart.dispatchAction({
+        type: 'focusNodeAdjacency',
+        dataIndex: nodeIndex
+      })
+    }
   }
-    // 等待DOM更新完成后滚动到对应节点
   await nextTick()
-  
-  // 滚动到选中的节点卡片
   scrollToNode(node.id)
 }
 
@@ -648,18 +859,14 @@ const scrollToNode = (nodeId: string) => {
   const container = nodesListContainer.value
   
   if (nodeElement && container) {
-    // 计算滚动位置
     const containerRect = container.getBoundingClientRect()
     const nodeRect = nodeElement.getBoundingClientRect()
     const containerScrollTop = container.scrollTop
     
-    // 计算节点在容器中的相对位置
     const nodeTop = nodeRect.top - containerRect.top + containerScrollTop
     const nodeBottom = nodeRect.bottom - containerRect.top + containerScrollTop
     
-    // 如果节点不在可视区域内，则滚动到节点位置
     if (nodeTop < containerScrollTop || nodeBottom > containerScrollTop + containerRect.height) {
-      // 平滑滚动到节点位置，并留出一些边距
       const scrollTo = nodeTop - containerRect.height * 0.1
       container.scrollTo({
         top: scrollTo,
@@ -670,8 +877,10 @@ const scrollToNode = (nodeId: string) => {
 }
 
 const filterNodes = () => {
-  let filtered = [...allNodes.value]
+  // 首先根据可见节点ID过滤
+  let filtered = allNodes.value.filter(node => visibleNodeIds.value.has(node.id))
   
+  // 然后根据关键词搜索过滤
   if (searchKeyword.value) {
     const keyword = searchKeyword.value.toLowerCase()
     filtered = filtered.filter(node => 
@@ -680,18 +889,17 @@ const filterNodes = () => {
     )
   }
   
-  if (selectedNodeType.value) {
-    filtered = filtered.filter(node => node.labels.includes(selectedNodeType.value))
-  }
-  
   filteredNodes.value = filtered
+  
+  if (chart) {
+    initChart()
+  }
 }
 
 const handleFileChange = (file: any) => {
   selectedFile.value = file.raw
-  // 如果还没有设置标题，使用文件名作为默认标题
   if (!addNodeForm.value.title && file.name) {
-    addNodeForm.value.title = file.name.replace(/\.[^/.]+$/, "") // 移除文件扩展名
+    addNodeForm.value.title = file.name.replace(/\.[^/.]+$/, "")
   }
 }
 
@@ -700,20 +908,15 @@ const addNode = async () => {
   
   try {
     let url = ''
-    let body: any = {}
     
     switch (addNodeForm.value.type) {
       case 'Concept':
         url = `http://patrickshao.site:8000/knowledge-graph/concepts?name=${encodeURIComponent(addNodeForm.value.name)}&description=${encodeURIComponent(addNodeForm.value.description || '')}`
         break
-      case 'Student':
-        url = `http://patrickshao.site:8000/knowledge-graph/students?student_id=${encodeURIComponent(addNodeForm.value.studentId)}&name=${encodeURIComponent(addNodeForm.value.studentName)}`
-        break
-      case 'LearningRecord':
-        url = `http://patrickshao.site:8000/knowledge-graph/learning-records?student_id=${encodeURIComponent(addNodeForm.value.learningRecordStudentId)}&concept_name=${encodeURIComponent(addNodeForm.value.conceptName)}&status=${encodeURIComponent(addNodeForm.value.status)}&progress=${addNodeForm.value.progress}`
+      case 'Chapter':
+        url = `http://patrickshao.site:8000/knowledge-graph/chapters?name=${encodeURIComponent(addNodeForm.value.chapterName)}`
         break
       case 'Resource':
-        // 资源节点使用文件上传接口
         await uploadResource()
         showAddNodeDialog.value = false
         ElMessage.success('资源上传成功')
@@ -819,6 +1022,9 @@ const deleteNode = async (node: GraphNode) => {
     if (node.labels.includes('Concept')) {
       const conceptName = node.properties.name || getNodeName(node)
       url = `http://patrickshao.site:8000/knowledge-graph/concepts/${encodeURIComponent(conceptName)}`
+    } else if (node.labels.includes('Chapter')) {
+      const chapterName = node.properties.name || getNodeName(node)
+      url = `http://patrickshao.site:8000/knowledge-graph/chapters/${encodeURIComponent(chapterName)}`
     } else {
       url = `http://patrickshao.site:8000/knowledge-graph/nodes/${encodeURIComponent(node.id)}`
     }
@@ -850,12 +1056,7 @@ const resetAddNodeForm = () => {
     type: '',
     name: '',
     description: '',
-    studentId: '',
-    studentName: '',
-    learningRecordStudentId: '',
-    conceptName: '',
-    status: 'not_started',
-    progress: 0,
+    chapterName: '',
     course: '',
     chapter: '',
     title: '',
@@ -897,9 +1098,11 @@ const zoomOut = () => {
 
 const resetView = () => {
   if (chart) {
+    // 重置视图但不重置可见节点
     chart.dispatchAction({
       type: 'restore'
     })
+    ElMessage.success('视图已重置')
   }
 }
 
@@ -947,6 +1150,7 @@ onMounted(() => {
 .actions {
   display: flex;
   gap: 10px;
+  align-items: center;
 }
 
 .main-content {
@@ -973,6 +1177,11 @@ onMounted(() => {
 .graph-controls {
   display: flex;
   gap: 5px;
+  align-items: center;
+}
+
+.drag-mode-indicator {
+  margin-left: 10px;
 }
 
 .filter-controls {
@@ -987,6 +1196,7 @@ onMounted(() => {
   border-radius: 4px;
   background-color: #f8f9fa;
   min-height: 500px;
+  cursor: move;
 }
 
 .graph-canvas {
@@ -999,7 +1209,6 @@ onMounted(() => {
   flex: 1;
   overflow-y: auto;
   max-height: 600px;
-    /* 添加滚动条样式 */
   scrollbar-width: thin;
   scrollbar-color: #c0c4cc #f5f7fa;
 }
@@ -1040,10 +1249,16 @@ onMounted(() => {
   opacity: 1;
 }
 
+.node-content {
+  padding: 8px 0;
+}
+
 .node-name {
   font-weight: 600;
   margin-bottom: 8px;
   color: #303133;
+  font-size: 14px;
+  line-height: 1.4;
 }
 
 .node-properties {
@@ -1053,18 +1268,22 @@ onMounted(() => {
 
 .property-item {
   display: flex;
-  margin-bottom: 2px;
+  margin-bottom: 4px;
+  line-height: 1.4;
 }
 
 .property-key {
   font-weight: 500;
-  margin-right: 5px;
+  margin-right: 6px;
   min-width: 60px;
+  color: #909399;
+  flex-shrink: 0;
 }
 
 .property-value {
   flex: 1;
-  word-break: break-all;
+  word-break: break-word;
+  color: #606266;
 }
 
 .empty-state {
@@ -1096,6 +1315,10 @@ onMounted(() => {
   .graph-container,
   .graph-canvas {
     min-height: 400px;
+  }
+  
+  .actions {
+    flex-wrap: wrap;
   }
 }
 </style>

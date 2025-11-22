@@ -37,7 +37,7 @@
 	</el-form>
 </template>
 
-<script lang="ts" setup>
+<script setup lang="ts">
 import { FormOption } from '@/types/form-option';
 import { FormInstance, FormRules, UploadProps } from 'element-plus';
 import { PropType, ref } from 'vue';
@@ -76,7 +76,7 @@ const formRef = ref<FormInstance>();
 const saveEdit = (formEl: FormInstance | undefined) => {
 	if (!formEl) return;
 	formEl.validate(valid => {
-		if (!valid) return false;
+		if (!valid) return;
 		update(form.value);
 	});
 };
