@@ -76,16 +76,6 @@
             </el-tag>
           </el-descriptions-item>
 
-          <el-descriptions-item label="学习状态">
-            <el-tag :type="getStatusTag(selectedNode.status)">
-              {{ getStatusText(selectedNode.status) }}
-            </el-tag>
-          </el-descriptions-item>
-
-          <el-descriptions-item v-if="selectedNode.progress !== undefined" label="掌握进度">
-            <el-progress :percentage="selectedNode.progress" />
-          </el-descriptions-item>
-
           <el-descriptions-item v-if="selectedNode.chapter" label="所属章节">
             {{ selectedNode.chapter }}
           </el-descriptions-item>
@@ -134,9 +124,6 @@
         <el-button @click="nodeDetailVisible = false">关闭</el-button>
         <el-button v-if="selectedNode?.category === 'resource'" type="primary" @click="openResource(selectedNode)">
           下载资源
-        </el-button>
-        <el-button v-else type="primary" @click="startLearning(selectedNode)">
-          开始学习
         </el-button>
       </template>
     </el-dialog>
@@ -188,8 +175,13 @@ const CLICK_DELAY = 300; // 单击延迟时间（毫秒）
 
 /* ---------- 计算属性 ---------- */
 const filteredGraphData = computed(() => {
+  // 过滤掉学生节点和学习记录节点
+  const validNodes = graphData.value.nodes.filter(n => 
+    n.category === 'chapter' || n.category === 'concept' || n.category === 'resource'
+  );
+  
   // 初始只显示章节节点，或者已展开的节点
-  const chapterNodes = graphData.value.nodes.filter(n => n.category === 'chapter');
+  const chapterNodes = validNodes.filter(n => n.category === 'chapter');
   const expandedNodeIds = expandedNodes.value;
   
   // 包含所有章节节点 + 已展开的节点
@@ -199,7 +191,7 @@ const filteredGraphData = computed(() => {
   ]);
 
   // 过滤节点
-  const nodes = graphData.value.nodes.filter(n => visibleNodeIds.has(n.id));
+  const nodes = validNodes.filter(n => visibleNodeIds.has(n.id));
   
   // 过滤连接：只显示两个端点都可见的连接
   const links = graphData.value.links.filter(l =>
@@ -284,7 +276,11 @@ const expandNodeNeighbors = (nodeId: string) => {
 
 // 检查是否已展开所有节点
 const checkAllExpanded = () => {
-  const allNodeIds = new Set(graphData.value.nodes.map(n => n.id));
+  const allNodeIds = new Set(
+    graphData.value.nodes
+      .filter(n => n.category === 'chapter' || n.category === 'concept' || n.category === 'resource')
+      .map(n => n.id)
+  );
   isAllExpanded.value = expandedNodes.value.size === allNodeIds.size;
 };
 
@@ -302,7 +298,9 @@ const toggleAllNodes = () => {
     ElMessage.success('已收起所有节点，仅显示章节节点');
   } else {
     // 如果未展开全部，则展开所有节点
-    const allNodeIds = graphData.value.nodes.map(n => n.id);
+    const allNodeIds = graphData.value.nodes
+      .filter(n => n.category === 'chapter' || n.category === 'concept' || n.category === 'resource')
+      .map(n => n.id);
     expandedNodes.value = new Set(allNodeIds);
     isAllExpanded.value = true;
     updateChart();
@@ -337,8 +335,6 @@ const updateChart = () => {
           return `<div style="text-align:left">
             <div style="font-weight:bold;margin-bottom:5px">${node.name}</div>
             <div>类型：${getNodeTypeText(node.category)}</div>
-            <div>状态：${getStatusText(node.status)}</div>
-            ${node.progress !== undefined ? `<div>进度：${node.progress}%</div>` : ''}
             ${node.chapter ? `<div>章节：${node.chapter}</div>` : ''}
             ${node.category === 'chapter' ? '<div style="color:#67c23a;font-size:12px">(双击展开相关节点)</div>' : ''}
           </div>`;
@@ -364,17 +360,15 @@ const updateChart = () => {
       circular: { rotateLabel: true },
       data: filteredGraphData.value.nodes.map(node => ({
         ...node,
-        symbolSize: getSymbolSize(node.category, node.status),
+        symbolSize: getSymbolSize(node.category),
         symbol: getSymbol(node.category),
-        itemStyle: getItemStyle(node.category, node.status)
+        itemStyle: getItemStyle(node.category)
       })),
       links: filteredGraphData.value.links,
       categories: [
         { name: 'chapter', itemStyle: { color: '#67c23a' } },
         { name: 'concept', itemStyle: { color: '#409eff' } },
-        { name: 'resource', itemStyle: { color: '#e6a23c' } },
-        { name: 'student', itemStyle: { color: '#f56c6c' } },
-        { name: 'learningrecord', itemStyle: { color: '#909399' } }
+        { name: 'resource', itemStyle: { color: '#e6a23c' } }
       ],
       roam: true,
       focusNodeAdjacency: true,
@@ -461,21 +455,19 @@ const updateGraph = () => {
 };
 
 /* ---------- 辅助函数 ---------- */
-const getSymbolSize = (category: string, status?: string) => {
-  const baseSize = { mastered: 50, learning: 40, unlearned: 35 }[status as string] || 35;
-  const multiplier = { resource: 0.8, concept: 1.0, chapter: 1.2, student: 0.9, learningrecord: 0.7 }[category] || 1.0;
-  const size = Math.round(baseSize * multiplier);
-  return category === 'resource' ? [40, 32] : size;
+const getSymbolSize = (category: string) => {
+  const size = { resource: 30, concept: 35, chapter: 40 }[category] || 35;
+  return category === 'resource' ? [30, 24] : size;
 };
 
 const getSymbol = (category: string) => {
-  return { concept: 'circle', resource: 'rect', chapter: 'triangle', student: 'diamond', learningrecord: 'pin' }[category] || 'circle';
+  return { concept: 'circle', resource: 'rect', chapter: 'triangle' }[category] || 'circle';
 };
 
-const getItemStyle = (category: string, status?: string) => {
-  const statusColor = { mastered: '#67c23a', learning: '#e6a23c', unlearned: '#909399' }[status as string] || '#909399';
+const getItemStyle = (category: string) => {
+  const color = { chapter: '#67c23a', concept: '#409eff', resource: '#e6a23c' }[category] || '#909399';
   return { 
-    color: statusColor, 
+    color: color, 
     borderWidth: category === 'resource' ? 2 : 0, 
     borderColor: '#fff' 
   };
@@ -484,8 +476,6 @@ const getItemStyle = (category: string, status?: string) => {
 /* ---------- 功能函数 ---------- */
 const getNodeTypeTag = (type: string) => ({ concept: 'success', resource: 'info', chapter: 'warning' }[type] || 'info');
 const getNodeTypeText = (type: string) => ({ concept: '知识点', resource: '学习资源', chapter: '章节' }[type] || '节点');
-const getStatusTag = (status: string) => ({ mastered: 'success', learning: 'warning', unlearned: 'info' }[status] || 'info');
-const getStatusText = (status: string) => ({ mastered: '已掌握', learning: '学习中', unlearned: '未学习' }[status] || '未知');
 
 const showNodeDetail = (node: GraphNode) => {
   selectedNode.value = node;

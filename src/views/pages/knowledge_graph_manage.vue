@@ -18,6 +18,9 @@
         <el-button @click="resetToInitialView" type="warning">
           <el-icon><RefreshLeft /></el-icon>重置视图
         </el-button>
+        <el-button @click="resetVisibleNodes" type="info">
+          <el-icon><RefreshRight /></el-icon>重置可见节点
+        </el-button>
       </div>
     </div>
 
@@ -27,7 +30,7 @@
         <el-card shadow="hover">
           <template #header>
             <div class="card-header">
-              <span>知识图谱可视化</span>
+              <span>知识图谱可视化 ({{ filteredNodes.length }}个节点)</span>
               <div class="graph-controls">
                 <el-button-group>
                   <el-button @click="zoomIn">
@@ -93,6 +96,15 @@
                   </el-tag>
                 </div>
                 <div class="node-actions">
+                  <el-button
+                    type="warning"
+                    size="small"
+                    text
+                    @click.stop="collapseNode(node.id)"
+                    v-if="!node.labels.includes('Chapter')"
+                  >
+                    <el-icon><Fold /></el-icon>
+                  </el-button>
                   <el-button
                     type="danger"
                     size="small"
@@ -298,7 +310,9 @@ import {
   Upload,
   Document,
   Position,
-  RefreshLeft
+  RefreshLeft,
+  RefreshRight,
+  Fold
 } from '@element-plus/icons-vue'
 
 // 类型定义
@@ -335,8 +349,12 @@ const selectedNodeId = ref<string>('')
 const searchKeyword = ref('')
 const uploadRef = ref()
 const selectedFile = ref<File | null>(null)
-const dragMode = ref(false) // 拖拽模式状态
-const nodePositions = ref<Map<string, { x: number; y: number; fixed: boolean }>>(new Map()) // 保存节点位置
+const dragMode = ref(false)
+const nodePositions = ref<Map<string, { x: number; y: number; fixed: boolean }>>(new Map())
+
+// 性能优化相关变量
+const chartUpdateTimer = ref<number>()
+const isUpdatingChart = ref(false)
 
 // 添加节点refs映射
 const nodeRefs = ref<Map<string, HTMLElement>>(new Map())
@@ -376,7 +394,7 @@ const nodeDisplayProperties = {
   Chapter: ['name']
 }
 
-// 定义属性标签映射（将属性键转换为更友好的中文标签）
+// 定义属性标签映射
 const propertyLabels: Record<string, string> = {
   'title': '标题',
   'course': '课程',
@@ -387,11 +405,7 @@ const propertyLabels: Record<string, string> = {
   'file_size': '文件大小',
   'upload_time': '上传时间',
   'name': '名称',
-  'description': '描述',
-  'student_id': '学号',
-  'student_name': '学生姓名',
-  'status': '状态',
-  'progress': '进度'
+  'description': '描述'
 }
 
 const setNodeRef = (el: any) => {
@@ -481,6 +495,13 @@ const initializeVisibleNodes = () => {
   filterNodes()
 }
 
+// 重置可见节点到初始状态
+const resetVisibleNodes = () => {
+  initializeVisibleNodes()
+  debounceUpdateChart()
+  ElMessage.success('已重置可见节点')
+}
+
 // 获取相邻节点（通过关系连接的节点）
 const getAdjacentNodes = (nodeId: string): Set<string> => {
   const adjacentNodeIds = new Set<string>()
@@ -508,11 +529,122 @@ const expandNode = (nodeId: string) => {
   })
   
   filterNodes()
+  debounceUpdateChart()
+}
+
+// 折叠节点
+const collapseNode = (nodeId: string) => {
+  const node = allNodes.value.find(n => n.id === nodeId)
+  if (!node) return
+  
+  // 如果是章节节点，不能完全折叠
+  if (node.labels.includes('Chapter')) {
+    ElMessage.warning('章节节点是基础节点，不能折叠')
+    return
+  }
+  
+  visibleNodeIds.value.delete(nodeId)
+  filterNodes()
+  debounceUpdateChart()
+  ElMessage.success('节点已折叠')
+}
+
+// 防抖更新图表
+const debounceUpdateChart = () => {
+  if (chartUpdateTimer.value) {
+    clearTimeout(chartUpdateTimer.value)
+  }
+  chartUpdateTimer.value = window.setTimeout(() => {
+    updateChartData()
+  }, 200) // 200ms防抖
+}
+
+// 增量更新图表数据
+const updateChartData = () => {
+  if (!chart || isUpdatingChart.value) return
+  
+  isUpdatingChart.value = true
+  
+  try {
+    const nodeData = filteredNodes.value.map(node => {
+      const nodeId = node.id
+      const savedPosition = nodePositions.value.get(nodeId)
+      
+      return {
+        id: node.id,
+        name: getNodeName(node),
+        category: node.labels[0],
+        symbolSize: getNodeSize(node.labels[0]),
+        itemStyle: {
+          color: getNodeColor(node.labels[0])
+        },
+        label: {
+          show: true, // 始终显示节点标签
+          position: 'right',
+          formatter: '{b}',
+          fontSize: 10
+        },
+        x: savedPosition?.x,
+        y: savedPosition?.y,
+        fixed: savedPosition?.fixed || false
+      }
+    })
+
+    const visibleRelationships = graphData.value.relationships.filter(rel => 
+      visibleNodeIds.value.has(rel.start_node_id) && visibleNodeIds.value.has(rel.end_node_id)
+    )
+
+    // 使用setOption进行增量更新
+    chart.setOption({
+      series: [{
+        data: nodeData,
+        links: visibleRelationships.map(rel => ({
+          source: rel.start_node_id,
+          target: rel.end_node_id,
+          relationship: rel,
+          lineStyle: {
+            color: '#aaa',
+            width: 1,
+            curveness: 0.3
+          },
+          label: {
+            show: false
+          },
+          emphasis: {
+            lineStyle: {
+              width: 2,
+              color: '#409eff'
+            }
+          }
+        })),
+        // 移除节点数量相关的限制
+        force: {
+          repulsion: 200, // 固定值，不再根据节点数量调整
+          gravity: 0.1,
+          edgeLength: 100,
+          layoutAnimation: true // 始终启用动画
+        }
+      }]
+    }, {
+      notMerge: false,
+      lazyUpdate: true
+    })
+    
+  } catch (error) {
+    console.error('更新图表失败:', error)
+  } finally {
+    isUpdatingChart.value = false
+  }
 }
 
 const initChart = () => {
   if (!graphCanvas.value) return
 
+  // 如果图表已存在，先销毁
+  if (chart) {
+    chart.dispose()
+  }
+  
   chart = echarts.init(graphCanvas.value)
   
   const categories = [
@@ -521,52 +653,27 @@ const initChart = () => {
     { name: 'Chapter' }
   ]
 
-  // 准备节点数据，只显示可见节点
-  const nodeData = filteredNodes.value.map(node => {
-    const nodeId = node.id
-    const savedPosition = nodePositions.value.get(nodeId)
-    
-    return {
-      id: node.id,
-      name: getNodeName(node),
-      category: node.labels[0],
-      symbolSize: getNodeSize(node.labels[0]),
-      itemStyle: {
-        color: getNodeColor(node.labels[0])
-      },
-      label: {
-        show: true,
-        position: 'right',
-        formatter: '{b}',
-        fontSize: 12
-      },
-      x: savedPosition?.x,
-      y: savedPosition?.y,
-      fixed: savedPosition?.fixed || false,
-      ...node
-    }
-  })
-
-  // 准备关系数据，只显示两个端点都可见的关系
-  const visibleRelationships = graphData.value.relationships.filter(rel => 
-    visibleNodeIds.value.has(rel.start_node_id) && visibleNodeIds.value.has(rel.end_node_id)
-  )
-
-  const option = {
+  const baseOption = {
+    animation: true, // 始终启用动画
     tooltip: {
       trigger: 'item',
+      confine: true, // 添加这个属性，确保tooltip不会超出容器
+      extraCssText: 'max-width: 300px; white-space: normal; word-break: break-all;', // 添加这一行
       formatter: (params: any) => {
         if (params.dataType === 'node') {
-          const node = params.data as GraphNode
-          const displayProperties = getDisplayProperties(node)
+          const node = params.data
+          const originalNode = allNodes.value.find(n => n.id === node.id)
+          if (!originalNode) return ''
+          
+          const displayProperties = getDisplayProperties(originalNode)
           return `
-            <div style="text-align: left; max-width: 300px;">
-              <div style="font-weight: bold; margin-bottom: 8px; font-size: 14px; color: #409eff;">${getNodeName(node)}</div>
-              <div style="margin-bottom: 6px; font-size: 12px; color: #909399;">类型: ${getNodeTypeText(node.labels[0])}</div>
+            <div style="text-align: left; max-width: 300px; word-wrap: break-word; overflow-wrap: break-word;">
+              <div style="font-weight: bold; margin-bottom: 8px; font-size: 14px; color: #409eff; word-break: break-word;">${node.name}</div>
+              <div style="margin-bottom: 6px; font-size: 12px; color: #909399;">类型: ${getNodeTypeText(node.category)}</div>
               ${Object.entries(displayProperties).map(([key, value]) => 
-                `<div style="margin-bottom: 4px; font-size: 12px;">
+                `<div style="margin-bottom: 4px; font-size: 12px; word-break: break-word;">
                   <span style="color: #606266; font-weight: 500;">${getPropertyLabel(key)}:</span>
-                  <span style="color: #303133;">${formatPropertyValue(value)}</span>
+                  <span style="color: #303133; word-break: break-word;">${formatPropertyValue(value)}</span>
                 </div>`
               ).join('')}
             </div>
@@ -574,13 +681,10 @@ const initChart = () => {
         } else if (params.dataType === 'edge') {
           const relationship = params.data.relationship
           return `
-            <div style="text-align: left;">
-              <div style="font-weight: bold; margin-bottom: 5px;">关系类型: ${getRelationshipLabel(relationship.type)}</div>
-              <div>起始节点: ${getNodeNameById(relationship.start_node_id)}</div>
-              <div>目标节点: ${getNodeNameById(relationship.end_node_id)}</div>
-              ${Object.entries(relationship.properties).map(([key, value]) => 
-                `<div>${key}: ${formatPropertyValue(value)}</div>`
-              ).join('')}
+            <div style="text-align: left; max-width: 300px; word-wrap: break-word;">
+              <div style="font-weight: bold; margin-bottom: 5px; word-break: break-word;">关系类型: ${getRelationshipLabel(relationship.type)}</div>
+              <div style="word-break: break-word;">起始节点: ${getNodeNameById(relationship.start_node_id)}</div>
+              <div style="word-break: break-word;">目标节点: ${getNodeNameById(relationship.end_node_id)}</div>
             </div>
           `
         }
@@ -590,52 +694,6 @@ const initChart = () => {
     series: [{
       type: 'graph',
       layout: 'force',
-      force: {
-        repulsion: 200,
-        gravity: 0.1,
-        edgeLength: 100,
-        layoutAnimation: true
-      },
-      data: nodeData,
-      links: visibleRelationships.map(rel => ({
-        source: rel.start_node_id,
-        target: rel.end_node_id,
-        relationship: rel,
-        lineStyle: {
-          color: '#aaa',
-          width: 2,
-          curveness: 0.3
-        },
-        label: {
-          show: false,
-          formatter: getRelationshipLabel(rel.type),
-          fontSize: 10,
-          backgroundColor: '#fff',
-          borderColor: '#ddd',
-          borderWidth: 1,
-          borderRadius: 4,
-          padding: [4, 6],
-          color: '#333'
-        },
-        emphasis: {
-          lineStyle: {
-            width: 3,
-            color: '#409eff'
-          },
-          label: {
-            show: true,
-            formatter: getRelationshipLabel(rel.type),
-            fontSize: 10,
-            fontWeight: 'normal',
-            backgroundColor: '#fff',
-            color: '#333',
-            borderColor: '#ddd',
-            borderWidth: 1,
-            borderRadius: 4,
-            padding: [4, 6]
-          }
-        }
-      })),
       categories: categories,
       roam: true,
       focusNodeAdjacency: true,
@@ -646,18 +704,15 @@ const initChart = () => {
       emphasis: {
         focus: 'adjacency',
         lineStyle: {
-          width: 4
+          width: 3
         }
       },
-      edgeLabel: {
-        show: false
-      },
-      // 启用拖拽功能
       draggable: dragMode.value
     }]
   }
-
-  chart.setOption(option)
+  
+  chart.setOption(baseOption)
+  updateChartData()
 
   // 添加点击事件
   chart.on('click', (params: any) => {
@@ -681,7 +736,7 @@ const initChart = () => {
       const position = {
         x: params.data.x,
         y: params.data.y,
-        fixed: true // 拖拽后固定位置
+        fixed: true
       }
       nodePositions.value.set(nodeId, position)
     }
@@ -890,10 +945,7 @@ const filterNodes = () => {
   }
   
   filteredNodes.value = filtered
-  
-  if (chart) {
-    initChart()
-  }
+  debounceUpdateChart()
 }
 
 const handleFileChange = (file: any) => {
@@ -1041,7 +1093,7 @@ const deleteNode = async (node: GraphNode) => {
     }
     
     await response.json()
-    ElMessage.success('节点删除成功')
+    ElMessage.success('节点删除 успешно')
     await loadGraphData()
   } catch (error) {
     if (error !== 'cancel') {
@@ -1098,7 +1150,6 @@ const zoomOut = () => {
 
 const resetView = () => {
   if (chart) {
-    // 重置视图但不重置可见节点
     chart.dispatchAction({
       type: 'restore'
     })
@@ -1151,6 +1202,7 @@ onMounted(() => {
   display: flex;
   gap: 10px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .main-content {
@@ -1197,6 +1249,8 @@ onMounted(() => {
   background-color: #f8f9fa;
   min-height: 500px;
   cursor: move;
+  position: relative; /* 添加这个属性，确保tooltip定位正确 */
+  overflow: hidden; /* 防止内容溢出 */
 }
 
 .graph-canvas {
@@ -1221,6 +1275,8 @@ onMounted(() => {
   cursor: pointer;
   transition: all 0.3s;
   background: white;
+  word-wrap: break-word; /* 确保节点内容不会溢出 */
+  overflow-wrap: break-word;
 }
 
 .node-item:hover {
@@ -1243,6 +1299,8 @@ onMounted(() => {
 .node-actions {
   opacity: 0;
   transition: opacity 0.3s;
+  display: flex;
+  gap: 5px;
 }
 
 .node-item:hover .node-actions {
@@ -1259,6 +1317,7 @@ onMounted(() => {
   color: #303133;
   font-size: 14px;
   line-height: 1.4;
+  word-break: break-word; /* 确保长名称不会溢出 */
 }
 
 .node-properties {
@@ -1270,6 +1329,7 @@ onMounted(() => {
   display: flex;
   margin-bottom: 4px;
   line-height: 1.4;
+  word-break: break-word; /* 确保长名称不会溢出 */
 }
 
 .property-key {
@@ -1284,6 +1344,7 @@ onMounted(() => {
   flex: 1;
   word-break: break-word;
   color: #606266;
+  word-break: break-word; /* 确保长名称不会溢出 */
 }
 
 .empty-state {
@@ -1305,6 +1366,12 @@ onMounted(() => {
   margin-left: 8px;
   font-size: 14px;
   color: #606266;
+}
+/* 添加全局样式，确保ECharts tooltip不会溢出 */
+.echarts-tooltip {
+  max-width: 300px !important;
+  word-wrap: break-word !important;
+  white-space: normal !important;
 }
 
 @media (max-width: 1200px) {

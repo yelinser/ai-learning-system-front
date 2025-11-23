@@ -93,7 +93,7 @@
                   <div class="question-meta">
                     <div class="difficulty">
                       <span>难度：</span>
-                      <el-rate :value="question.difficulty" disabled show-score />
+                      {{Number(question.difficulty)}}
                     </div>
                     <div class="knowledge">
                       <span>知识点：</span>
